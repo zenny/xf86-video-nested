@@ -27,6 +27,7 @@
  * Colin Hill <colin.james.hill@gmail.com>
  * Weseung Hwang <weseung@gmail.com>
  * Nathaniel Way <nathanielcw@hotmail.com>
+ * Laércio de Sousa <laerciosousa@sme-mogidascruzes.sp.gov.br>
  */
 
 #include <colormap.h>
@@ -64,12 +65,14 @@ void NestedClientUpdateScreen(NestedClientPrivatePtr pPriv,
 
 void NestedClientHideCursor(NestedClientPrivatePtr pPriv);
 
-void NestedClientCheckEvents(NestedClientPrivatePtr pPriv);
-
 void NestedClientCloseScreen(NestedClientPrivatePtr pPriv);
 
 void NestedClientSetDevicePtr(NestedClientPrivatePtr pPriv, DeviceIntPtr dev);
 
 int NestedClientGetFileDescriptor(NestedClientPrivatePtr pPriv);
 
+void NestedClientCheckEvents(NestedClientPrivatePtr pPriv);
+
+#ifdef NESTED_INPUT
 Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv, KeySymsPtr keySyms, CARD8 *modmap, XkbControlsPtr ctrls);
+#endif

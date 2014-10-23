@@ -27,7 +27,12 @@
  * Colin Hill <colin.james.hill@gmail.com>
  * Weseung Hwang <weseung@gmail.com>
  * Nathaniel Way <nathanielcw@hotmail.com>
+ * Laércio de Sousa <laerciosousa@sme-mogidascruzes.sp.gov.br>
  */
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 #include <stdlib.h>
 
@@ -42,13 +47,11 @@
 #include <xorg-server.h>
 #include <xf86.h>
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #include "client.h"
 
+#ifdef NESTED_INPUT
 #include "nested_input.h"
+#endif
 
 struct NestedClientPrivate {
     Display *display;
@@ -210,10 +213,17 @@ NestedClientCreateScreen(int scrnIndex,
     
     XMapWindow(pPriv->display, pPriv->window);
 
-    XSelectInput(pPriv->display, pPriv->window, ExposureMask | 
-         PointerMotionMask | EnterWindowMask | LeaveWindowMask |
-         ButtonPressMask | ButtonReleaseMask | KeyPressMask |
-         KeyReleaseMask);
+    XSelectInput(pPriv->display, pPriv->window,
+#ifdef NESTED_INPUT
+                 PointerMotionMask |
+                 EnterWindowMask   |
+                 LeaveWindowMask   |
+                 ButtonPressMask   |
+                 ButtonReleaseMask |
+                 KeyPressMask      |
+                 KeyReleaseMask    |
+#endif
+                 ExposureMask);
 
     if (!NestedClientTryXShm(pPriv, scrnIndex, width, height, depth)) {
         pPriv->img = XCreateImage(pPriv->display,
@@ -317,7 +327,7 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv) {
                                      ((XExposeEvent*)&ev)->y + 
                                      ((XExposeEvent*)&ev)->height);
             break;
-
+#ifdef NESTED_INPUT
         case MotionNotify:
             if (!pPriv->dev) {
                 xf86DrvMsg(pPriv->scrnIndex, X_INFO, "Input device is not yet initialized, ignoring input.\n");
@@ -348,6 +358,7 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv) {
 
             NestedInputPostKeyboardEvent(pPriv->dev, ev.xkey.keycode, ev.type == KeyPress);
             break;
+#endif
         }
     }
 }
@@ -373,6 +384,7 @@ NestedClientGetFileDescriptor(NestedClientPrivatePtr pPriv) {
     return ConnectionNumber(pPriv->display);
 }
 
+#ifdef NESTED_INPUT
 Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv, KeySymsPtr keySyms, CARD8 *modmap, XkbControlsPtr ctrls) {
     XModifierKeymap *modifier_keymap;
     KeySym *keymap;
@@ -419,3 +431,4 @@ Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv, KeySymsPtr ke
     XkbFreeKeyboard(xkb, 0, False);
     return TRUE;
 }
+#endif
