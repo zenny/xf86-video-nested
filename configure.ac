@@ -78,7 +78,16 @@ PKG_CHECK_MODULES(XORG, xorg-server xproto $REQUIRED_MODULES)
 # Checks for libraries.
 PKG_CHECK_MODULES(X11, x11)
 case "$BACKEND" in
-    xlib) PKG_CHECK_MODULES(XEXT, xext) ;;
+    xlib)
+        PKG_CHECK_MODULES(XEXT, xext)
+    ;;
+    xcb)
+        if test "x$NESTED_INPUT" = xyes; then
+            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-xkb)
+        else
+            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm)
+        fi
+    ;;
 esac
 
 DRIVER_NAME=nested
