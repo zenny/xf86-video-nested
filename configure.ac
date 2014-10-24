@@ -83,9 +83,9 @@ case "$BACKEND" in
     ;;
     xcb)
         if test "x$NESTED_INPUT" = xyes; then
-            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-xkb)
+            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-randr xcb-xkb)
         else
-            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm)
+            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-randr)
         fi
     ;;
 esac

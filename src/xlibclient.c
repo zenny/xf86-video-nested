@@ -81,7 +81,7 @@ struct NestedClientPrivate {
 
 /* Checks if a display is open */
 Bool
-NestedClientCheckDisplay(char *displayName, char *xauthFile, int *widt, int *height) {
+NestedClientCheckDisplay(int scrnIndex, char *displayName, char *xauthFile, char *output, int *width, int *height, int *x, int *y) {
     Display *d;
 
     d = XOpenDisplay(displayName);
@@ -165,6 +165,7 @@ NestedClientCreateScreen(int scrnIndex,
                          char *displayName,
                          char *xauthFile,
                          Bool fullscreen,
+                         char *output,
                          int width,
                          int height,
                          int originX,

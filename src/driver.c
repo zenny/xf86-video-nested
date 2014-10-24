@@ -103,7 +103,8 @@ typedef enum {
     OPTION_DISPLAY,
     OPTION_ORIGIN,
     OPTION_XAUTHORITY,
-    OPTION_FULLSCREEN
+    OPTION_FULLSCREEN,
+    OPTION_OUTPUT
 } NestedOpts;
 
 typedef enum {
@@ -123,6 +124,7 @@ static OptionInfoRec NestedOptions[] = {
     { OPTION_XAUTHORITY, "Xauthority",  OPTV_STRING,  {0}, FALSE },
     { OPTION_ORIGIN,     "Origin",      OPTV_STRING,  {0}, FALSE },
     { OPTION_FULLSCREEN, "Fullscreen",  OPTV_BOOLEAN, {0}, FALSE },
+    { OPTION_OUTPUT,     "Output",      OPTV_STRING,  {0}, FALSE },
     { -1,                NULL,          OPTV_NONE,    {0}, FALSE }
 };
 
@@ -179,6 +181,7 @@ typedef struct NestedPrivate {
     int                          originX;
     int                          originY;
     Bool                         fullscreen;
+    char                        *output;
     int                          fullWidth;
     int                          fullHeight;
     NestedClientPrivatePtr       clientData;
@@ -339,6 +342,7 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     pNested->originX = 0;
     pNested->originY = 0;
     pNested->fullscreen = FALSE;
+    pNested->output = NULL;
 
     if (!xf86SetDepthBpp(pScrn, 0, 0, 0, Support24bppFb | Support32bppFb))
         return FALSE;
@@ -390,10 +394,23 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Fullscreen mode %s\n",
                    pNested->fullscreen ? "enabled" : "disabled");
 
+    if (xf86IsOptionSet(NestedOptions, OPTION_OUTPUT)) {
+        pNested->output = xf86GetOptValString(NestedOptions,
+                                              OPTION_OUTPUT);
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Targeting host X server output \"%s\"\n",
+                   pNested->output);
+    }
+
     xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
 
-    if (!NestedClientCheckDisplay(pNested->displayName, pNested->xauthFile,
-                                  &pNested->fullWidth, &pNested->fullHeight)) {
+    if (!NestedClientCheckDisplay(pScrn->scrnIndex,
+                                  pNested->displayName,
+                                  pNested->xauthFile,
+                                  pNested->output,
+                                  &pNested->fullWidth,
+                                  &pNested->fullHeight,
+                                  &pNested->originX,
+                                  &pNested->originY)) {
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "Can't open display: %s\n",
                    pNested->displayName);
         return FALSE;
@@ -445,7 +462,7 @@ NestedValidateModes(ScrnInfoPtr pScrn) {
     int maxX = 0, maxY = 0;
     NestedPrivatePtr pNested = PNESTED(pScrn);
 
-    if (pNested->fullscreen) {
+    if (pNested->fullscreen || pNested->output != NULL) {
         if (!NestedAddMode(pScrn, pNested->fullWidth, pNested->fullHeight)) {
             return 0;
         }
@@ -602,6 +619,7 @@ static Bool NestedScreenInit(SCREEN_INIT_ARGS_DECL)
                                                    pNested->displayName,
                                                    pNested->xauthFile,
                                                    pNested->fullscreen,
+                                                   pNested->output,
                                                    pScrn->virtualX,
                                                    pScrn->virtualY,
                                                    pNested->originX,

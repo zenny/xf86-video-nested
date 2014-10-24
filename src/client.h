@@ -39,7 +39,7 @@
 struct NestedClientPrivate;
 typedef struct NestedClientPrivate *NestedClientPrivatePtr;
 
-Bool NestedClientCheckDisplay(char *displayName, char *xauthFile, int *width, int *height);
+Bool NestedClientCheckDisplay(int scrnIndex, char *displayName, char *xauthFile, char *output, int *width, int *height, int *x, int *y);
 
 Bool NestedClientValidDepth(int depth);
 
@@ -47,6 +47,7 @@ NestedClientPrivatePtr NestedClientCreateScreen(int    scrnIndex,
                                                 char  *displayName,
                                                 char  *xauthFile,
                                                 Bool   fullscreen,
+                                                char  *output,
                                                 int    width,
                                                 int    height,
                                                 int    originX,
