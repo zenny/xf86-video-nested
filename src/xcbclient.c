@@ -61,6 +61,7 @@ extern char *display;
 struct NestedClientPrivate {
     /* Host X server data */
     char *displayName;
+    char *xauthFile;
     int screenNumber;
     xcb_connection_t *conn;
     xcb_visualtype_t *visual;
@@ -76,6 +77,7 @@ struct NestedClientPrivate {
     int y;
     unsigned int width;
     unsigned int height;
+    Bool usingFullscreen;
     xcb_image_t *img;
     xcb_shm_segment_info_t shminfo;
     DeviceIntPtr dev; // The pointer to the input device.  Passed back to the
@@ -103,12 +105,28 @@ _NestedClientFree(NestedClientPrivatePtr pPriv)
 }
 
 Bool
-NestedClientCheckDisplay(char *displayName)
+NestedClientCheckDisplay(char *displayName, char *xauthFile, int *width, int *height)
 {
-    xcb_connection_t *c = xcb_connect(displayName, NULL);
+    int n;
+    xcb_connection_t *c;
+    xcb_screen_t *s;
+
+    /* Needed until we can pass xauthFile directly to xcb_connect(). */
+    if (xauthFile)
+        setenv("XAUTHORITY", xauthFile, 1);
+
+    c = xcb_connect(displayName, &n);
 
     if (xcb_connection_has_error(c))
         return FALSE;
+
+    s = xcb_aux_get_screen(c, n);
+
+    if (width != NULL)
+        *width = s->width_in_pixels;
+
+    if (height != NULL)
+        *height = s->height_in_pixels;
 
     xcb_disconnect(c);
     return TRUE;
@@ -366,6 +384,10 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
         XCB_EVENT_MASK_EXPOSURE;
     pPriv->attr_mask = XCB_CW_EVENT_MASK;
 
+    /* Needed until we can pass xauthFile directly to xcb_connect(). */
+    if (pPriv->xauthFile)
+        setenv("XAUTHORITY", pPriv->xauthFile, 1);
+
     pPriv->conn = xcb_connect(pPriv->displayName, &pPriv->screenNumber);
 
     if (xcb_connection_has_error(pPriv->conn))
@@ -408,6 +430,43 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
 }
 
 static void
+_NestedClientSetFullscreenHint(NestedClientPrivatePtr pPriv)
+{
+    xcb_intern_atom_cookie_t cookie_WINDOW_STATE,
+                             cookie_WINDOW_STATE_FULLSCREEN;
+    xcb_atom_t atom_WINDOW_STATE, atom_WINDOW_STATE_FULLSCREEN;
+    int index;
+    xcb_intern_atom_reply_t *reply;
+
+    cookie_WINDOW_STATE = xcb_intern_atom(pPriv->conn, FALSE,
+                                          strlen("_NET_WM_STATE"),
+                                          "_NET_WM_STATE");
+    cookie_WINDOW_STATE_FULLSCREEN =
+        xcb_intern_atom(pPriv->conn, FALSE,
+                        strlen("_NET_WM_STATE_FULLSCREEN"),
+                        "_NET_WM_STATE_FULLSCREEN");
+
+    reply = xcb_intern_atom_reply(pPriv->conn, cookie_WINDOW_STATE, NULL);
+    atom_WINDOW_STATE = reply->atom;
+    free(reply);
+
+    reply = xcb_intern_atom_reply(pPriv->conn, cookie_WINDOW_STATE_FULLSCREEN,
+                                  NULL);
+    atom_WINDOW_STATE_FULLSCREEN = reply->atom;
+    free(reply);
+
+    xcb_change_property(pPriv->conn,
+                        PropModeReplace,
+                        pPriv->window,
+                        atom_WINDOW_STATE,
+                        XCB_ATOM_ATOM,
+                        32,
+                        1,
+                        &atom_WINDOW_STATE_FULLSCREEN);
+
+}
+
+static void
 _NestedClientCreateWindow(NestedClientPrivatePtr pPriv)
 {
     xcb_size_hints_t sizeHints;
@@ -439,6 +498,9 @@ _NestedClientCreateWindow(NestedClientPrivatePtr pPriv)
                                   pPriv->window,
                                   &sizeHints);
 
+    if (pPriv->usingFullscreen)
+        _NestedClientSetFullscreenHint(pPriv);
+
     _NestedClientSetWindowTitle(pPriv, "");
     _NestedClientSetWMClass(pPriv, "Xorg");
 
@@ -460,6 +522,8 @@ _NestedClientCreateWindow(NestedClientPrivatePtr pPriv)
 NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
                          char *displayName,
+                         char *xauthFile,
+                         Bool fullscreen,
                          int width,
                          int height,
                          int originX,
@@ -476,7 +540,9 @@ NestedClientCreateScreen(int scrnIndex,
         return NULL;
 
     pPriv->displayName = displayName;
+    pPriv->xauthFile = xauthFile;
     pPriv->scrnIndex = scrnIndex;
+    pPriv->usingFullscreen = fullscreen;
     pPriv->width = width;
     pPriv->height = height;
     pPriv->x = originX;
