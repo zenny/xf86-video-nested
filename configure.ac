@@ -56,17 +56,17 @@ AC_SUBST([moduledir])
 # Define a configure option for choosing the client backend when building driver
 AC_ARG_WITH([backend],
             AS_HELP_STRING([--with-backend=NAME],
-                           [Backend to be used when building the driver. Available options: xlib, xcb (default: xlib)]),
+                           [Backend to be used when building the driver. Available options: xlib, xcb (default: xcb)]),
             [BACKEND="$withval"],
-            [BACKEND=xlib])
+            [BACKEND=xcb])
 AC_SUBST([BACKEND])
 
 # Define a configure option to enable/disable nested input driver build
 AC_ARG_ENABLE([nested-input],
-              AS_HELP_STRING([--disable-nested-input],
-                             [Disable building nested input driver]),
+              AS_HELP_STRING([--enable-nested-input],
+                             [Enable building nested input driver]),
               [NESTED_INPUT="$enableval"],
-              [NESTED_INPUT=yes])
+              [NESTED_INPUT=no])
 AM_CONDITIONAL([NESTED_INPUT], [test "x$NESTED_INPUT" = xyes])
 
 # Store the list of server defined optional extensions in REQUIRED_MODULES
