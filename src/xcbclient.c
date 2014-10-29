@@ -105,11 +105,6 @@ _NestedClientFree(NestedClientPrivatePtr pPriv)
     free(pPriv);
 }
 
-static Bool
-_NestedClientGetOutputGeometry(xcb_connection_t *c, const char *output, int *x, int *y, int *width, int *height)
-{
-}
-
 Bool
 NestedClientCheckDisplay(int scrnIndex, char *displayName, char *xauthFile, char *output, int *width, int *height, int *x, int *y)
 {

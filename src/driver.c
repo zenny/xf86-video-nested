@@ -463,9 +463,8 @@ NestedValidateModes(ScrnInfoPtr pScrn) {
     NestedPrivatePtr pNested = PNESTED(pScrn);
 
     if (pNested->fullscreen || pNested->output != NULL) {
-        if (!NestedAddMode(pScrn, pNested->fullWidth, pNested->fullHeight)) {
+        if (!NestedAddMode(pScrn, pNested->fullWidth, pNested->fullHeight))
             return 0;
-        }
     } else {
         /* Print useless stuff */
         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Monitor wants these modes:\n");
