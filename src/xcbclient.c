@@ -182,7 +182,7 @@ _NestedClientGetOutputGeometry(int scrnIndex,
         /* Get output name */
         name_len = xcb_randr_get_output_info_name_length(output_info_r);
         name = malloc(name_len + 1);
-        strncpy(name, (char*)xcb_randr_get_output_info_name(output_info_r), name_len);
+        strncpy(name, (char *)xcb_randr_get_output_info_name(output_info_r), name_len);
         name[name_len] = '\0';
 
         if (!strcmp(name, output))
@@ -558,7 +558,7 @@ _NestedClientEmptyCursorInit(NestedClientPrivatePtr pPriv)
     xcb_free_pixmap(pPriv->conn, cursor_pxm);
 }
 
-static void
+static Bool
 _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
 {
     uint16_t red, green, blue;
@@ -619,6 +619,7 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
     _NestedClientEmptyCursorInit(pPriv);
 
     xcb_flush(pPriv->conn);
+    return TRUE;
 }
 
 static void
@@ -740,7 +741,12 @@ NestedClientCreateScreen(int scrnIndex,
     pPriv->y = originY;
     pPriv->dev = NULL;
 
-    _NestedClientHostXInit(pPriv);
+    if (!_NestedClientHostXInit(pPriv));
+    {
+        _NestedClientFree(pPriv);
+        return NULL;
+    }
+
     _NestedClientCreateWindow(pPriv);
     _NestedClientTryXShm(pPriv);
     _NestedClientCreateXImage(pPriv, depth);
@@ -775,7 +781,7 @@ NestedClientHideCursor(NestedClientPrivatePtr pPriv)
 char *
 NestedClientGetFrameBuffer(NestedClientPrivatePtr pPriv)
 {
-    return pPriv->img->data;
+    return (char *)pPriv->img->data;
 }
 
 void
