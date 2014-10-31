@@ -754,6 +754,7 @@ static void NestedLeaveVT(VT_FUNC_ARGS_DECL) {
 static void NestedFreeScreen(FREE_SCREEN_ARGS_DECL) {
     SCRN_INFO_PTR(arg);
     xf86DrvMsg(pScrn->scrnIndex, X_INFO, "NestedFreeScreen\n");
+    NestedFreePrivate(pScrn);
 }
 
 static ModeStatus NestedValidMode(SCRN_ARG_TYPE arg, DisplayModePtr mode,

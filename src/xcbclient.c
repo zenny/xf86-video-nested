@@ -334,8 +334,8 @@ NestedClientValidDepth(int depth)
 static void
 _NestedClientTryXShm(NestedClientPrivatePtr pPriv)
 {
-    int shmMajor, shmMinor;
-    Bool hasSharedPixmaps;
+    int shmMajor = 0, shmMinor = 0;
+    Bool hasSharedPixmaps = FALSE;
 
     /* Try to get share memory ximages for a little bit more speed */
     if (!_NestedClientCheckExtension(pPriv->conn, &xcb_shm_id))
@@ -558,7 +558,7 @@ _NestedClientEmptyCursorInit(NestedClientPrivatePtr pPriv)
     xcb_free_pixmap(pPriv->conn, cursor_pxm);
 }
 
-static Bool
+static void
 _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
 {
     uint16_t red, green, blue;
@@ -627,7 +627,6 @@ _NestedClientSetFullscreenHint(NestedClientPrivatePtr pPriv)
     xcb_intern_atom_cookie_t cookie_WINDOW_STATE,
                              cookie_WINDOW_STATE_FULLSCREEN;
     xcb_atom_t atom_WINDOW_STATE, atom_WINDOW_STATE_FULLSCREEN;
-    int index;
     xcb_intern_atom_reply_t *reply;
 
     cookie_WINDOW_STATE = xcb_intern_atom(pPriv->conn, FALSE,
