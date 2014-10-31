@@ -105,151 +105,211 @@ _NestedClientFree(NestedClientPrivatePtr pPriv)
     free(pPriv);
 }
 
+static Bool
+_NestedClientGetOutputGeometry(int scrnIndex,
+                               xcb_connection_t *c,
+                               xcb_window_t rootWindow,
+                               char *output,
+                               unsigned int *width,
+                               unsigned int *height,
+                               int *x,
+                               int *y)
+{
+    Bool output_found = FALSE;
+    int i, name_len = 0;
+    char *name = NULL;
+    xcb_generic_error_t *error;
+    xcb_randr_query_version_cookie_t version_c;
+    xcb_randr_query_version_reply_t *version_r;
+    xcb_randr_get_screen_resources_cookie_t screen_resources_c;
+    xcb_randr_get_screen_resources_reply_t *screen_resources_r;
+    xcb_randr_output_t *randr_outputs;
+    xcb_randr_get_output_info_cookie_t output_info_c;
+    xcb_randr_get_output_info_reply_t *output_info_r;
+    xcb_randr_get_crtc_info_cookie_t crtc_info_c;
+    xcb_randr_get_crtc_info_reply_t *crtc_info_r;
+
+    if (!_NestedClientCheckExtension(c, &xcb_randr_id))
+    {
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Host X server does not support RANDR extension (or it's disabled).\n");
+        return FALSE;
+    }
+
+    /* Check RandR version */
+    version_c = xcb_randr_query_version(c, 1, 2);
+    version_r = xcb_randr_query_version_reply(c,
+                                              version_c,
+                                              &error);
+
+    if (error != NULL || version_r == NULL)
+    {
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Failed to get RandR version supported by host X server.\n");
+        return FALSE;
+    }
+    else if (version_r->major_version < 1 || version_r->minor_version < 2)
+    {
+        free(version_r);
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Host X server doesn't support RandR 1.2, needed for -output usage.\n");
+        return FALSE;
+    }
+
+    free(version_r);
+
+    /* Get list of outputs from screen resources */
+    screen_resources_c = xcb_randr_get_screen_resources(c,
+                                                        rootWindow);
+    screen_resources_r = xcb_randr_get_screen_resources_reply(c,
+                                                              screen_resources_c,
+                                                              NULL);
+    randr_outputs = xcb_randr_get_screen_resources_outputs(screen_resources_r);
+
+    for (i = 0; !output_found && i < screen_resources_r->num_outputs; i++)
+    {
+        /* Get info on the output */
+        output_info_c = xcb_randr_get_output_info(c,
+                                                  randr_outputs[i],
+                                                  XCB_CURRENT_TIME);
+        output_info_r = xcb_randr_get_output_info_reply(c,
+                                                        output_info_c,
+                                                        NULL);
+
+        /* Get output name */
+        name_len = xcb_randr_get_output_info_name_length(output_info_r);
+        name = malloc(name_len + 1);
+        strncpy(name, (char*)xcb_randr_get_output_info_name(output_info_r), name_len);
+        name[name_len] = '\0';
+
+        if (!strcmp(name, output))
+        {
+            output_found = TRUE;
+
+            /* Check if output is connected */
+            if (output_info_r->crtc == XCB_NONE)
+            {
+                free(name);
+                free(output_info_r);
+                free(screen_resources_r);
+                xf86DrvMsg(scrnIndex,
+                           X_ERROR,
+                           "Output %s is currently disabled (or not connected).\n", output);
+                return FALSE;
+            }
+
+            /* Get CRTC from output info */
+            crtc_info_c = xcb_randr_get_crtc_info(c,
+                                                  output_info_r->crtc,
+                                                  XCB_CURRENT_TIME);
+            crtc_info_r = xcb_randr_get_crtc_info_reply(c,
+                                                        crtc_info_c,
+                                                        NULL);
+
+            /* Get CRTC geometry */
+            if (x != NULL)
+                *x = crtc_info_r->x;
+
+            if (y != NULL)
+                *y = crtc_info_r->y;
+
+            if (width != NULL)
+                *width = crtc_info_r->width;
+
+            if (height != NULL)
+                *height = crtc_info_r->height;
+
+            free(crtc_info_r);
+        }
+
+        free(name);
+        free(output_info_r);
+    }
+
+    free(screen_resources_r);
+
+    if (!output_found)
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Output %s not available in host X server.\n", output);
+
+    return output_found;
+}
+
+static Bool
+_NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *c, char *displayName)
+{
+    switch (xcb_connection_has_error(c))
+    {
+    case XCB_CONN_ERROR:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Failed to connect to host X server at display %s.\n", displayName);
+        return TRUE;
+    case XCB_CONN_CLOSED_EXT_NOTSUPPORTED:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Connection to host X server closed: unsupported extension.\n");
+        return TRUE;
+    case XCB_CONN_CLOSED_MEM_INSUFFICIENT:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Connection to host X server closed: out of memory.\n");
+        return TRUE;
+    case XCB_CONN_CLOSED_REQ_LEN_EXCEED:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Connection to host X server closed: too many requests.\n");
+        return TRUE;
+    case XCB_CONN_CLOSED_PARSE_ERR:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Invalid display for host X server: %s\n", displayName);
+        return TRUE;
+    case XCB_CONN_CLOSED_INVALID_SCREEN:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Host X server does not have a screen matching display %s.\n", displayName);
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 Bool
-NestedClientCheckDisplay(int scrnIndex, char *displayName, char *xauthFile, char *output, int *width, int *height, int *x, int *y)
+NestedClientCheckDisplay(int scrnIndex,
+                         char *displayName,
+                         char *xauthFile,
+                         char *output,
+                         unsigned int *width,
+                         unsigned int *height,
+                         int *x,
+                         int *y)
 {
     int n;
     xcb_connection_t *c;
     xcb_screen_t *s;
 
-    /* Needed until we can pass xauthFile directly to xcb_connect(). */
+    /* Needed until we can pass authorization file
+     *  directly to xcb_connect(). */
     if (xauthFile)
         setenv("XAUTHORITY", xauthFile, 1);
 
     c = xcb_connect(displayName, &n);
 
-    if (xcb_connection_has_error(c))
+    if (_NestedClientConnectionHasError(scrnIndex, c, displayName))
         return FALSE;
 
     s = xcb_aux_get_screen(c, n);
 
-    if (output)
+    if (output != NULL)
     {
-        Bool output_found = FALSE;
-        int i, name_len = 0;
-        char *name = NULL;
-        xcb_generic_error_t *error;
-        xcb_randr_query_version_cookie_t version_c;
-        xcb_randr_query_version_reply_t *version_r;
-        xcb_randr_get_screen_resources_cookie_t screen_resources_c;
-        xcb_randr_get_screen_resources_reply_t *screen_resources_r;
-        xcb_randr_output_t *randr_outputs;
-        xcb_randr_get_output_info_cookie_t output_info_c;
-        xcb_randr_get_output_info_reply_t *output_info_r;
-        xcb_randr_get_crtc_info_cookie_t crtc_info_c;
-        xcb_randr_get_crtc_info_reply_t *crtc_info_r;
-    
-        xcb_window_t rootWindow = s->root;
-
-        if (!_NestedClientCheckExtension(c, &xcb_randr_id))
-        {
-            xf86DrvMsg(scrnIndex,
-                       X_ERROR,
-                       "Host X server does not support RANDR extension (or it's disabled).\n");
+        if (!_NestedClientGetOutputGeometry(scrnIndex, c, s->root,
+                                            output, width, height, x, y))
             return FALSE;
-        }
-
-        /* Check RandR version */
-        version_c = xcb_randr_query_version(c, 1, 2);
-        version_r = xcb_randr_query_version_reply(c,
-                                                  version_c,
-                                                  &error);
-
-        if (error != NULL || version_r == NULL)
-        {
-            xf86DrvMsg(scrnIndex,
-                       X_ERROR,
-                       "Failed to get RandR version supported by host X server.\n");
-            return FALSE;
-        }
-        else if (version_r->major_version < 1 || version_r->minor_version < 2)
-        {
-            free(version_r);
-            xf86DrvMsg(scrnIndex,
-                       X_ERROR,
-                       "Host X server doesn't support RandR 1.2, needed for -output usage.\n");
-            return FALSE;
-        }
-
-        free(version_r);
-
-        /* Get list of outputs from screen resources */
-        screen_resources_c = xcb_randr_get_screen_resources(c,
-                                                            rootWindow);
-        screen_resources_r = xcb_randr_get_screen_resources_reply(c,
-                                                                  screen_resources_c,
-                                                                  NULL);
-        randr_outputs = xcb_randr_get_screen_resources_outputs(screen_resources_r);
-
-        for (i = 0; !output_found && i < screen_resources_r->num_outputs; i++)
-        {
-            /* Get info on the output */
-            output_info_c = xcb_randr_get_output_info(c,
-                                                      randr_outputs[i],
-                                                      XCB_CURRENT_TIME);
-            output_info_r = xcb_randr_get_output_info_reply(c,
-                                                            output_info_c,
-                                                            NULL);
-
-            /* Get output name */
-            name_len = xcb_randr_get_output_info_name_length(output_info_r);
-            name = malloc(name_len + 1);
-            strncpy(name, (char*)xcb_randr_get_output_info_name(output_info_r), name_len);
-            name[name_len] = '\0';
-
-            if (!strcmp(name, output))
-            {
-                output_found = TRUE;
-
-                /* Check if output is connected */
-                if (output_info_r->crtc == XCB_NONE)
-                {
-                    free(name);
-                    free(output_info_r);
-                    free(screen_resources_r);
-                    xf86DrvMsg(scrnIndex,
-                               X_ERROR,
-                               "Output %s is currently disabled (or not connected).\n", output);
-                    return FALSE;
-                }
-
-                /* Get CRTC from output info */
-                crtc_info_c = xcb_randr_get_crtc_info(c,
-                                                      output_info_r->crtc,
-                                                      XCB_CURRENT_TIME);
-                crtc_info_r = xcb_randr_get_crtc_info_reply(c,
-                                                            crtc_info_c,
-                                                            NULL);
-
-                /* Get CRTC geometry */
-                if (x != NULL)
-                    *x = crtc_info_r->x;
-
-                if (y != NULL)
-                    *y = crtc_info_r->y;
-
-                if (width != NULL)
-                    *width = crtc_info_r->width;
-
-                if (height != NULL)
-                    *height = crtc_info_r->height;
-
-                free(crtc_info_r);
-            }
-
-            free(name);
-            free(output_info_r);
-        }
-
-        free(screen_resources_r);
-
-        if (!output_found)
-        {
-            xf86DrvMsg(scrnIndex,
-                       X_ERROR,
-                       "Output %s not available in host X server.\n", output);
-            return FALSE;
-        }
     }
     else
     {
@@ -522,7 +582,7 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
 
     pPriv->conn = xcb_connect(pPriv->displayName, &pPriv->screenNumber);
 
-    if (xcb_connection_has_error(pPriv->conn))
+    if (_NestedClientConnectionHasError(pPriv->scrnIndex, pPriv->conn, pPriv->displayName))
         return FALSE;
 
     screen = xcb_aux_get_screen(pPriv->conn, pPriv->screenNumber);
@@ -655,8 +715,7 @@ NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
                          char *displayName,
                          char *xauthFile,
-                         Bool fullscreen,
-                         char *output,
+                         Bool wantFullscreenHint,
                          int width,
                          int height,
                          int originX,
@@ -675,15 +734,12 @@ NestedClientCreateScreen(int scrnIndex,
     pPriv->displayName = displayName;
     pPriv->xauthFile = xauthFile;
     pPriv->scrnIndex = scrnIndex;
-    pPriv->usingFullscreen = fullscreen;
+    pPriv->usingFullscreen = wantFullscreenHint;
     pPriv->width = width;
     pPriv->height = height;
     pPriv->x = originX;
     pPriv->y = originY;
     pPriv->dev = NULL;
-
-    if (output != NULL)
-        pPriv->usingFullscreen = TRUE;
 
     _NestedClientHostXInit(pPriv);
     _NestedClientCreateWindow(pPriv);

@@ -27,7 +27,7 @@
  * Colin Hill <colin.james.hill@gmail.com>
  * Weseung Hwang <weseung@gmail.com>
  * Nathaniel Way <nathanielcw@hotmail.com>
- * Laércio de Sousa <lbsousajr@gmail.com>
+ * Laércio de Sousa <laerciosousa@sme-mogidascruzes.sp.gov.br>
  */
 
 #include <stdlib.h>
@@ -52,7 +52,6 @@
 #include "compat-api.h"
 
 #include "client.h"
-
 #ifdef NESTED_INPUT
 #include "nested_input.h"
 #endif
@@ -101,8 +100,8 @@ void NestedPrintMode(ScrnInfoPtr p, DisplayModePtr m);
 
 typedef enum {
     OPTION_DISPLAY,
-    OPTION_ORIGIN,
     OPTION_XAUTHORITY,
+    OPTION_ORIGIN,
     OPTION_FULLSCREEN,
     OPTION_OUTPUT
 } NestedOpts;
@@ -120,12 +119,12 @@ static SymTabRec NestedChipsets[] = {
  * port NestedClient to something that's not Xlib/Xcb we might need to add some
  * custom options */
 static OptionInfoRec NestedOptions[] = {
-    { OPTION_DISPLAY,    "Display",     OPTV_STRING,  {0}, FALSE },
-    { OPTION_XAUTHORITY, "Xauthority",  OPTV_STRING,  {0}, FALSE },
-    { OPTION_ORIGIN,     "Origin",      OPTV_STRING,  {0}, FALSE },
-    { OPTION_FULLSCREEN, "Fullscreen",  OPTV_BOOLEAN, {0}, FALSE },
-    { OPTION_OUTPUT,     "Output",      OPTV_STRING,  {0}, FALSE },
-    { -1,                NULL,          OPTV_NONE,    {0}, FALSE }
+    { OPTION_DISPLAY,    "Display",    OPTV_STRING,  {0}, FALSE },
+    { OPTION_XAUTHORITY, "Xauthority", OPTV_STRING,  {0}, FALSE },
+    { OPTION_ORIGIN,     "Origin",     OPTV_STRING,  {0}, FALSE },
+    { OPTION_FULLSCREEN, "Fullscreen", OPTV_BOOLEAN, {0}, FALSE },
+    { OPTION_OUTPUT,     "Output",     OPTV_STRING,  {0}, FALSE },
+    { -1,                NULL,         OPTV_NONE,    {0}, FALSE }
 };
 
 _X_EXPORT DriverRec NESTED = {
@@ -180,10 +179,10 @@ typedef struct NestedPrivate {
     char                        *xauthFile;
     int                          originX;
     int                          originY;
+    unsigned int                 fullWidth;
+    unsigned int                 fullHeight;
     Bool                         fullscreen;
     char                        *output;
-    int                          fullWidth;
-    int                          fullHeight;
     NestedClientPrivatePtr       clientData;
     CreateScreenResourcesProcPtr CreateScreenResources;
     CloseScreenProcPtr           CloseScreen;
@@ -341,6 +340,8 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     pNested->xauthFile = NULL;
     pNested->originX = 0;
     pNested->originY = 0;
+    pNested->fullWidth = 0;
+    pNested->fullHeight = 0;
     pNested->fullscreen = FALSE;
     pNested->output = NULL;
 
@@ -412,7 +413,7 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
                                   &pNested->originX,
                                   &pNested->originY)) {
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "Can't open display: %s\n",
-                   pNested->displayName);
+                   pNested->displayName ? pNested->displayName : getenv("DISPLAY"));
         return FALSE;
     }
 
@@ -462,9 +463,10 @@ NestedValidateModes(ScrnInfoPtr pScrn) {
     int maxX = 0, maxY = 0;
     NestedPrivatePtr pNested = PNESTED(pScrn);
 
-    if (pNested->fullscreen || pNested->output != NULL) {
-        if (!NestedAddMode(pScrn, pNested->fullWidth, pNested->fullHeight))
+    if (pNested->output != NULL || pNested->fullscreen) {
+        if (!NestedAddMode(pScrn, pNested->fullWidth, pNested->fullHeight)) {
             return 0;
+        }
     } else {
         /* Print useless stuff */
         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Monitor wants these modes:\n");
@@ -496,6 +498,7 @@ NestedValidateModes(ScrnInfoPtr pScrn) {
             }
         }
     }
+
     pScrn->modePool = NULL;
 
     /* Now set virtualX, virtualY, displayWidth and virtualFrom */
@@ -617,8 +620,7 @@ static Bool NestedScreenInit(SCREEN_INIT_ARGS_DECL)
     pNested->clientData = NestedClientCreateScreen(pScrn->scrnIndex,
                                                    pNested->displayName,
                                                    pNested->xauthFile,
-                                                   pNested->fullscreen,
-                                                   pNested->output,
+                                                   pNested->output != NULL || pNested->fullscreen,
                                                    pScrn->virtualX,
                                                    pScrn->virtualY,
                                                    pNested->originX,

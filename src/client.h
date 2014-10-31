@@ -39,15 +39,21 @@
 struct NestedClientPrivate;
 typedef struct NestedClientPrivate *NestedClientPrivatePtr;
 
-Bool NestedClientCheckDisplay(int scrnIndex, char *displayName, char *xauthFile, char *output, int *width, int *height, int *x, int *y);
+Bool NestedClientCheckDisplay(int           scrnIndex,
+                              char         *displayName,
+                              char         *xauthFile,
+                              char         *output,
+                              unsigned int *width,
+                              unsigned int *height,
+                              int          *x,
+                              int          *y);
 
 Bool NestedClientValidDepth(int depth);
 
 NestedClientPrivatePtr NestedClientCreateScreen(int    scrnIndex,
                                                 char  *displayName,
                                                 char  *xauthFile,
-                                                Bool   fullscreen,
-                                                char  *output,
+                                                Bool   wantFullscreenHint,
                                                 int    width,
                                                 int    height,
                                                 int    originX,
@@ -68,13 +74,13 @@ void NestedClientUpdateScreen(NestedClientPrivatePtr pPriv,
 
 void NestedClientHideCursor(NestedClientPrivatePtr pPriv);
 
+void NestedClientCheckEvents(NestedClientPrivatePtr pPriv);
+
 void NestedClientCloseScreen(NestedClientPrivatePtr pPriv);
 
 void NestedClientSetDevicePtr(NestedClientPrivatePtr pPriv, DeviceIntPtr dev);
 
 int NestedClientGetFileDescriptor(NestedClientPrivatePtr pPriv);
-
-void NestedClientCheckEvents(NestedClientPrivatePtr pPriv);
 
 #ifdef NESTED_INPUT
 Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv, KeySymsPtr keySyms, CARD8 *modmap, XkbControlsPtr ctrls);

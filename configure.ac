@@ -67,7 +67,11 @@ AC_ARG_ENABLE([nested-input],
                              [Enable building nested input driver]),
               [NESTED_INPUT="$enableval"],
               [NESTED_INPUT=no])
+AC_SUBST([NESTED_INPUT])
 AM_CONDITIONAL([NESTED_INPUT], [test "x$NESTED_INPUT" = xyes])
+if test "x$NESTED_INPUT" = xyes; then
+    AC_DEFINE([NESTED_INPUT], [1], [Define if nested input driver is enabled])
+fi
 
 # Store the list of server defined optional extensions in REQUIRED_MODULES
 #XORG_DRIVER_CHECK_EXT(RANDR, randrproto)

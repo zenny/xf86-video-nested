@@ -31,7 +31,7 @@ nested_drv_la_LIBADD = $(XORG_LIBS) $(X11_LIBS) $(XEXT_LIBS) $(XCB_LIBS)
 nested_drv_ladir = @moduledir@/drivers
 
 nested_drv_la_SOURCES = driver.c client.h compat-api.h @BACKEND@client.c
+
 if NESTED_INPUT
 nested_drv_la_SOURCES += nested_input.h nested_input.c
 endif
-

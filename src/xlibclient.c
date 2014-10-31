@@ -41,7 +41,9 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#ifdef NESTED_INPUT
 #include <X11/XKBlib.h>
+#endif
 #include <X11/extensions/XShm.h>
 
 #include <xorg-server.h>
@@ -70,6 +72,7 @@ struct NestedClientPrivate {
     DeviceIntPtr dev; // The pointer to the input device.  Passed back to the
                       // input driver when posting input events.
 
+#ifdef NESTED_INPUT
     struct {
         int op;
         int event;
@@ -77,12 +80,25 @@ struct NestedClientPrivate {
         int major;
         int minor;
     } xkb;
+#endif
 };
 
 /* Checks if a display is open */
 Bool
-NestedClientCheckDisplay(int scrnIndex, char *displayName, char *xauthFile, char *output, int *width, int *height, int *x, int *y) {
+NestedClientCheckDisplay(int scrnIndex,
+                         char *displayName,
+                         char *xauthFile,
+                         char *output,
+                         unsigned int *width,
+                         unsigned int *height,
+                         int *x,
+                         int *y) {
     Display *d;
+
+    /* Needed until we can pass authorization file
+     * directly to XOpenDisplay() */
+    if (xauthFile != NULL)
+        setenv("XAUTHORITY", xauthFile, 1);
 
     d = XOpenDisplay(displayName);
     if (!d) {
@@ -164,8 +180,7 @@ NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
                          char *displayName,
                          char *xauthFile,
-                         Bool fullscreen,
-                         char *output,
+                         Bool wantFullscreenHint,
                          int width,
                          int height,
                          int originX,
@@ -183,10 +198,16 @@ NestedClientCreateScreen(int scrnIndex,
     pPriv = malloc(sizeof(struct NestedClientPrivate));
     pPriv->scrnIndex = scrnIndex;
 
+    /* Needed until we can pass authorization file
+     * directly to XOpenDisplay() */
+    if (xauthFile != NULL)
+        setenv("XAUTHORITY", xauthFile, 1);
+
     pPriv->display = XOpenDisplay(displayName);
     if (!pPriv->display)
         return NULL;
 
+#ifdef NESTED_INPUT
     supported = XkbQueryExtension(pPriv->display, &pPriv->xkb.op, &pPriv->xkb.event,
                                   &pPriv->xkb.error, &pPriv->xkb.major, &pPriv->xkb.minor);
     if (!supported) {
@@ -194,6 +215,7 @@ NestedClientCreateScreen(int scrnIndex,
         XCloseDisplay(pPriv->display);
         return NULL;
     }
+#endif
 
     pPriv->screenNumber = DefaultScreen(pPriv->display);
     pPriv->screen = ScreenOfDisplay(pPriv->display, pPriv->screenNumber);
@@ -330,6 +352,7 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv) {
                                      ((XExposeEvent*)&ev)->y + 
                                      ((XExposeEvent*)&ev)->height);
             break;
+
 #ifdef NESTED_INPUT
         case MotionNotify:
             if (!pPriv->dev) {
