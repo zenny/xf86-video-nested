@@ -741,7 +741,7 @@ NestedClientCreateScreen(int scrnIndex,
     pPriv->y = originY;
     pPriv->dev = NULL;
 
-    if (!_NestedClientHostXInit(pPriv));
+    if (!_NestedClientHostXInit(pPriv))
     {
         _NestedClientFree(pPriv);
         return NULL;
