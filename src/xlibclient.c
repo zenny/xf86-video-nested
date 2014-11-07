@@ -86,9 +86,9 @@ struct NestedClientPrivate {
 /* Checks if a display is open */
 Bool
 NestedClientCheckDisplay(int scrnIndex,
-                         char *displayName,
-                         char *xauthFile,
-                         char *output,
+                         const char *displayName,
+                         const char *xauthFile,
+                         const char *output,
                          unsigned int *width,
                          unsigned int *height,
                          int *x,
@@ -178,15 +178,15 @@ NestedClientTryXShm(NestedClientPrivatePtr pPriv, int scrnIndex, int width, int 
 
 NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
-                         char *displayName,
-                         char *xauthFile,
+                         const char *displayName,
+                         const char *xauthFile,
                          Bool wantFullscreenHint,
-                         int width,
-                         int height,
+                         unsigned int width,
+                         unsigned int height,
                          int originX,
                          int originY,
-                         int depth,
-                         int bitsPerPixel,
+                         unsigned int depth,
+                         unsigned int bitsPerPixel,
                          Pixel *retRedMask,
                          Pixel *retGreenMask,
                          Pixel *retBlueMask) {

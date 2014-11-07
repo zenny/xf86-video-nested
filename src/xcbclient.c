@@ -59,10 +59,12 @@
 
 extern char *display;
 
+static xcb_atom_t atom_WM_DELETE_WINDOW;
+
 struct NestedClientPrivate {
     /* Host X server data */
-    char *displayName;
-    char *xauthFile;
+    const char *displayName;
+    const char *xauthFile;
     int screenNumber;
     xcb_connection_t *conn;
     xcb_visualtype_t *visual;
@@ -109,7 +111,7 @@ static Bool
 _NestedClientGetOutputGeometry(int scrnIndex,
                                xcb_connection_t *c,
                                xcb_window_t rootWindow,
-                               char *output,
+                               const char *output,
                                unsigned int *width,
                                unsigned int *height,
                                int *x,
@@ -240,7 +242,7 @@ _NestedClientGetOutputGeometry(int scrnIndex,
 }
 
 static Bool
-_NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *c, char *displayName)
+_NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *c, const char *displayName)
 {
     switch (xcb_connection_has_error(c))
     {
@@ -262,7 +264,7 @@ _NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *c, char *displa
     case XCB_CONN_CLOSED_REQ_LEN_EXCEED:
         xf86DrvMsg(scrnIndex,
                    X_ERROR,
-                   "Connection to host X server closed: too many requests.\n");
+                   "Connection to host X server closed: exceeding request length that server accepts.\n");
         return TRUE;
     case XCB_CONN_CLOSED_PARSE_ERR:
         xf86DrvMsg(scrnIndex,
@@ -281,9 +283,9 @@ _NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *c, char *displa
 
 Bool
 NestedClientCheckDisplay(int scrnIndex,
-                         char *displayName,
-                         char *xauthFile,
-                         char *output,
+                         const char *displayName,
+                         const char *xauthFile,
+                         const char *output,
                          unsigned int *width,
                          unsigned int *height,
                          int *x,
@@ -505,7 +507,6 @@ _NestedClientSetWindowTitle(NestedClientPrivatePtr pPriv,
                           8,
                           strlen(buf),
                           buf);
-    xcb_flush(pPriv->conn);
 }
 
 static void
@@ -618,7 +619,6 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
 
     _NestedClientEmptyCursorInit(pPriv);
 
-    xcb_flush(pPriv->conn);
     return TRUE;
 }
 
@@ -648,14 +648,48 @@ _NestedClientSetFullscreenHint(NestedClientPrivatePtr pPriv)
     free(reply);
 
     xcb_change_property(pPriv->conn,
-                        PropModeReplace,
+                        XCB_PROP_MODE_REPLACE,
                         pPriv->window,
                         atom_WINDOW_STATE,
                         XCB_ATOM_ATOM,
                         32,
                         1,
                         &atom_WINDOW_STATE_FULLSCREEN);
+}
 
+static void
+_NestedClientSetDeleteWindowHint(NestedClientPrivatePtr pPriv)
+{
+    xcb_intern_atom_cookie_t cookie_WM_PROTOCOLS,
+                             cookie_WM_DELETE_WINDOW;
+    xcb_atom_t atom_WM_PROTOCOLS;
+    xcb_intern_atom_reply_t *reply;
+
+    cookie_WM_PROTOCOLS = xcb_intern_atom(pPriv->conn, FALSE,
+                                          strlen("WM_PROTOCOLS"),
+                                          "WM_PROTOCOLS");
+    cookie_WM_DELETE_WINDOW =
+        xcb_intern_atom(pPriv->conn, FALSE,
+                        strlen("WM_DELETE_WINDOW"),
+                        "WM_DELETE_WINDOW");
+
+    reply = xcb_intern_atom_reply(pPriv->conn, cookie_WM_PROTOCOLS, NULL);
+    atom_WM_PROTOCOLS = reply->atom;
+    free(reply);
+
+    reply = xcb_intern_atom_reply(pPriv->conn, cookie_WM_DELETE_WINDOW,
+                                  NULL);
+    atom_WM_DELETE_WINDOW = reply->atom;
+    free(reply);
+
+    xcb_change_property(pPriv->conn,
+                        XCB_PROP_MODE_REPLACE,
+                        pPriv->window,
+                        atom_WM_PROTOCOLS,
+                        XCB_ATOM_ATOM,
+                        32,
+                        1,
+                        &atom_WM_DELETE_WINDOW);
 }
 
 static void
@@ -693,6 +727,7 @@ _NestedClientCreateWindow(NestedClientPrivatePtr pPriv)
     if (pPriv->usingFullscreen)
         _NestedClientSetFullscreenHint(pPriv);
 
+    _NestedClientSetDeleteWindowHint(pPriv);
     _NestedClientSetWindowTitle(pPriv, "");
     _NestedClientSetWMClass(pPriv, "Xorg");
 
@@ -713,15 +748,15 @@ _NestedClientCreateWindow(NestedClientPrivatePtr pPriv)
 
 NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
-                         char *displayName,
-                         char *xauthFile,
+                         const char *displayName,
+                         const char *xauthFile,
                          Bool wantFullscreenHint,
-                         int width,
-                         int height,
+                         unsigned int width,
+                         unsigned int height,
                          int originX,
                          int originY,
-                         int depth,
-                         int bitsPerPixel,
+                         unsigned int depth,
+                         unsigned int bitsPerPixel,
                          Pixel *retRedMask,
                          Pixel *retGreenMask,
                          Pixel *retBlueMask)
@@ -813,6 +848,24 @@ _NestedClientProcessExpose(NestedClientPrivatePtr pPriv,
                              xev->y + xev->height);
 }
 
+static inline void
+_NestedClientProcessClientMessage(NestedClientPrivatePtr pPriv,
+                                  xcb_generic_event_t *ev)
+{
+    xcb_client_message_event_t *cmev = (xcb_client_message_event_t *)ev;
+
+    if (cmev->data.data32[0] == atom_WM_DELETE_WINDOW)
+    {
+        /* XXX: Is there a better way to do this? */
+        xf86DrvMsg(pPriv->scrnIndex,
+                   X_INFO,
+                   "Nested client window closed.\n");
+        free(ev);
+        NestedClientCloseScreen(pPriv);
+        exit(0);
+    }
+}
+
 #ifdef NESTED_INPUT
 static inline Bool
 _NestedClientEventCheckInputDevice(NestedClientPrivatePtr pPriv)
@@ -898,8 +951,18 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
 
         if (!ev)
         {
-            if (xcb_connection_has_error(pPriv->conn))
+            if (_NestedClientConnectionHasError(pPriv->scrnIndex,
+                                                pPriv->conn,
+                                                pPriv->displayName))
+            {
+                /* XXX: Is there a better way to do this? */
+                xf86DrvMsg(pPriv->scrnIndex,
+                           X_ERROR,
+                           "Connection with host X server lost.\n");
+                free(ev);
+                NestedClientCloseScreen(pPriv);
                 exit(1);
+            }
 
             break;
         }
@@ -908,6 +971,9 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
         {
         case XCB_EXPOSE:
             _NestedClientProcessExpose(pPriv, ev);
+            break;
+        case XCB_CLIENT_MESSAGE:
+            _NestedClientProcessClientMessage(pPriv, ev);
             break;
 #ifdef NESTED_INPUT
         case XCB_MOTION_NOTIFY:
@@ -929,6 +995,7 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
         }
 
         free(ev);
+        xcb_flush(pPriv->conn);
     }
 }
 

@@ -175,14 +175,14 @@ _X_EXPORT XF86ModuleData nestedModuleData = {
 
 /* These stuff should be valid to all server generations */
 typedef struct NestedPrivate {
-    char                        *displayName;
-    char                        *xauthFile;
+    const char                  *displayName;
+    const char                  *xauthFile;
     int                          originX;
     int                          originY;
     unsigned int                 fullWidth;
     unsigned int                 fullHeight;
     Bool                         fullscreen;
-    char                        *output;
+    const char                  *output;
     NestedClientPrivatePtr       clientData;
     CreateScreenResourcesProcPtr CreateScreenResources;
     CloseScreenProcPtr           CloseScreen;
@@ -249,6 +249,7 @@ NestedProbe(DriverPtr drv, int flags) {
             pScrn = NULL;
             entityIndex = xf86ClaimNoSlot(drv, NESTED_CHIP, devSections[i],
                                           TRUE);
+            free(devSections);
             pScrn = xf86AllocateScreen(drv, 0);
             if (pScrn) {
                 xf86AddEntityToScreen(pScrn, entityIndex);
@@ -323,7 +324,7 @@ static void NestedFreePrivate(ScrnInfoPtr pScrn) {
 /* Data from here is valid to all server generations */
 static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     NestedPrivatePtr pNested;
-    char *originString = NULL;
+    const char *originString = NULL;
 
     xf86DrvMsg(pScrn->scrnIndex, X_INFO, "NestedPreInit\n");
 
@@ -559,7 +560,7 @@ NestedAddMode(ScrnInfoPtr pScrn, int width, int height) {
 
     len = strlen(nameBuf);
     mode->name = XNFalloc(len+1);
-    strcpy(mode->name, nameBuf);
+    strcpy((char *)mode->name, nameBuf);
 
     xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Adding mode %s\n", mode->name);
 

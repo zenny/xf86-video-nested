@@ -40,9 +40,9 @@ struct NestedClientPrivate;
 typedef struct NestedClientPrivate *NestedClientPrivatePtr;
 
 Bool NestedClientCheckDisplay(int           scrnIndex,
-                              char         *displayName,
-                              char         *xauthFile,
-                              char         *output,
+                              const char   *displayName,
+                              const char   *xauthFile,
+                              const char   *output,
                               unsigned int *width,
                               unsigned int *height,
                               int          *x,
@@ -50,19 +50,19 @@ Bool NestedClientCheckDisplay(int           scrnIndex,
 
 Bool NestedClientValidDepth(int depth);
 
-NestedClientPrivatePtr NestedClientCreateScreen(int    scrnIndex,
-                                                char  *displayName,
-                                                char  *xauthFile,
-                                                Bool   wantFullscreenHint,
-                                                int    width,
-                                                int    height,
-                                                int    originX,
-                                                int    originY,
-                                                int    depth,
-                                                int    bitsPerPixel,
-                                                Pixel *retRedMask,
-                                                Pixel *retGreenMask,
-                                                Pixel *retBlueMask);
+NestedClientPrivatePtr NestedClientCreateScreen(int          scrnIndex,
+                                                const char  *displayName,
+                                                const char  *xauthFile,
+                                                Bool         wantFullscreenHint,
+                                                unsigned int width,
+                                                unsigned int height,
+                                                int          originX,
+                                                int          originY,
+                                                unsigned int depth,
+                                                unsigned int bitsPerPixel,
+                                                Pixel       *retRedMask,
+                                                Pixel       *retGreenMask,
+                                                Pixel       *retBlueMask);
 
 char *NestedClientGetFrameBuffer(NestedClientPrivatePtr pPriv);
 
