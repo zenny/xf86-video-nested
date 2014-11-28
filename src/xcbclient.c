@@ -61,6 +61,17 @@ extern char *display;
 
 static xcb_atom_t atom_WM_DELETE_WINDOW;
 
+typedef struct _Output {
+    const char *name;
+    xcb_randr_output_t id;
+    xcb_randr_crtc_t crtc;
+    xcb_randr_mode_t *modes;
+    int x;
+    int y;
+    unsigned int width;
+    unsigned int height;
+} Output;
+
 struct NestedClientPrivate {
     /* Host X server data */
     const char *displayName;
@@ -108,8 +119,52 @@ _NestedClientFree(NestedClientPrivatePtr pPriv)
 }
 
 static Bool
+_NestedClientCheckRandRVersion(int scrnIndex,
+                               xcb_connection_t *conn,
+                               int major, int minor)
+{
+    xcb_randr_query_version_cookie_t cookie;
+    xcb_randr_query_version_reply_t *reply;
+    xcb_generic_error_t *error;
+
+    if (!_NestedClientCheckExtension(conn, &xcb_randr_id))
+    {
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Host X server does not support RANDR extension (or it's disabled).\n");
+        return FALSE;
+    }
+
+    /* Check RandR version */
+    cookie = xcb_randr_query_version(conn, major, minor);
+    reply = xcb_randr_query_version_reply(conn, cookie, &error);
+
+    if (!reply)
+    {
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Failed to get RandR version supported by host X server. Error code = %d.\n",
+                   error->error_code);
+        free(error);
+        return FALSE;
+    }
+    else if (reply->major_version < major || reply->minor_version < minor)
+    {
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Host X server doesn't support RandR %d.%d, needed for Option \"Output\" usage.\n",
+                   major, minor);
+        free(reply);
+        return FALSE;
+    }
+
+    free(reply);
+    return TRUE;
+}
+
+static Bool
 _NestedClientGetOutputGeometry(int scrnIndex,
-                               xcb_connection_t *c,
+                               xcb_connection_t *conn,
                                xcb_window_t rootWindow,
                                const char *output,
                                unsigned int *width,
@@ -121,8 +176,6 @@ _NestedClientGetOutputGeometry(int scrnIndex,
     int i, name_len = 0;
     char *name = NULL;
     xcb_generic_error_t *error;
-    xcb_randr_query_version_cookie_t version_c;
-    xcb_randr_query_version_reply_t *version_r;
     xcb_randr_get_screen_resources_cookie_t screen_resources_c;
     xcb_randr_get_screen_resources_reply_t *screen_resources_r;
     xcb_randr_output_t *randr_outputs;
@@ -131,42 +184,13 @@ _NestedClientGetOutputGeometry(int scrnIndex,
     xcb_randr_get_crtc_info_cookie_t crtc_info_c;
     xcb_randr_get_crtc_info_reply_t *crtc_info_r;
 
-    if (!_NestedClientCheckExtension(c, &xcb_randr_id))
-    {
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Host X server does not support RANDR extension (or it's disabled).\n");
+    if (!_NestedClientCheckRandRVersion(scrnIndex, conn, 1, 2))
         return FALSE;
-    }
-
-    /* Check RandR version */
-    version_c = xcb_randr_query_version(c, 1, 2);
-    version_r = xcb_randr_query_version_reply(c,
-                                              version_c,
-                                              &error);
-
-    if (error != NULL || version_r == NULL)
-    {
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Failed to get RandR version supported by host X server.\n");
-        return FALSE;
-    }
-    else if (version_r->major_version < 1 || version_r->minor_version < 2)
-    {
-        free(version_r);
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Host X server doesn't support RandR 1.2, needed for -output usage.\n");
-        return FALSE;
-    }
-
-    free(version_r);
 
     /* Get list of outputs from screen resources */
-    screen_resources_c = xcb_randr_get_screen_resources(c,
+    screen_resources_c = xcb_randr_get_screen_resources(conn,
                                                         rootWindow);
-    screen_resources_r = xcb_randr_get_screen_resources_reply(c,
+    screen_resources_r = xcb_randr_get_screen_resources_reply(conn,
                                                               screen_resources_c,
                                                               NULL);
     randr_outputs = xcb_randr_get_screen_resources_outputs(screen_resources_r);
@@ -174,10 +198,10 @@ _NestedClientGetOutputGeometry(int scrnIndex,
     for (i = 0; !output_found && i < screen_resources_r->num_outputs; i++)
     {
         /* Get info on the output */
-        output_info_c = xcb_randr_get_output_info(c,
+        output_info_c = xcb_randr_get_output_info(conn,
                                                   randr_outputs[i],
                                                   XCB_CURRENT_TIME);
-        output_info_r = xcb_randr_get_output_info_reply(c,
+        output_info_r = xcb_randr_get_output_info_reply(conn,
                                                         output_info_c,
                                                         NULL);
 
@@ -204,10 +228,10 @@ _NestedClientGetOutputGeometry(int scrnIndex,
             }
 
             /* Get CRTC from output info */
-            crtc_info_c = xcb_randr_get_crtc_info(c,
+            crtc_info_c = xcb_randr_get_crtc_info(conn,
                                                   output_info_r->crtc,
                                                   XCB_CURRENT_TIME);
-            crtc_info_r = xcb_randr_get_crtc_info_reply(c,
+            crtc_info_r = xcb_randr_get_crtc_info_reply(conn,
                                                         crtc_info_c,
                                                         NULL);
 
@@ -242,9 +266,9 @@ _NestedClientGetOutputGeometry(int scrnIndex,
 }
 
 static Bool
-_NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *c, const char *displayName)
+_NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *conn, const char *displayName)
 {
-    switch (xcb_connection_has_error(c))
+    switch (xcb_connection_has_error(conn))
     {
     case XCB_CONN_ERROR:
         xf86DrvMsg(scrnIndex,
@@ -292,7 +316,7 @@ NestedClientCheckDisplay(int scrnIndex,
                          int *y)
 {
     int n;
-    xcb_connection_t *c;
+    xcb_connection_t *conn;
     xcb_screen_t *s;
 
     /* Needed until we can pass authorization file
@@ -300,16 +324,16 @@ NestedClientCheckDisplay(int scrnIndex,
     if (xauthFile)
         setenv("XAUTHORITY", xauthFile, 1);
 
-    c = xcb_connect(displayName, &n);
+    conn = xcb_connect(displayName, &n);
 
-    if (_NestedClientConnectionHasError(scrnIndex, c, displayName))
+    if (_NestedClientConnectionHasError(scrnIndex, conn, displayName))
         return FALSE;
 
-    s = xcb_aux_get_screen(c, n);
+    s = xcb_aux_get_screen(conn, n);
 
     if (output != NULL)
     {
-        if (!_NestedClientGetOutputGeometry(scrnIndex, c, s->root,
+        if (!_NestedClientGetOutputGeometry(scrnIndex, conn, s->root,
                                             output, width, height, x, y))
             return FALSE;
     }
@@ -322,7 +346,7 @@ NestedClientCheckDisplay(int scrnIndex,
             *height = s->height_in_pixels;
     }
 
-    xcb_disconnect(c);
+    xcb_disconnect(conn);
     return TRUE;
 }
 
