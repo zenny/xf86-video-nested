@@ -63,6 +63,10 @@ static xcb_atom_t atom_WM_DELETE_WINDOW;
 
 typedef struct _Output {
     const char *name;
+
+    /* XXX: Storing root window id here is ugly! */
+    xcb_window_t rootWindow;
+
     xcb_randr_output_t id;
     xcb_randr_crtc_t crtc;
     xcb_randr_mode_t *modes;
@@ -163,47 +167,65 @@ _NestedClientCheckRandRVersion(int scrnIndex,
 }
 
 static Bool
-_NestedClientGetOutputGeometry(int scrnIndex,
-                               xcb_connection_t *conn,
-                               xcb_window_t rootWindow,
-                               const char *output,
-                               unsigned int *width,
-                               unsigned int *height,
-                               int *x,
-                               int *y)
+_NestedClientOutputInit(int scrnIndex,
+                        xcb_connection_t *conn,
+                        Output *output)
 {
-    Bool output_found = FALSE;
-    int i, name_len = 0;
-    char *name = NULL;
     xcb_generic_error_t *error;
     xcb_randr_get_screen_resources_cookie_t screen_resources_c;
     xcb_randr_get_screen_resources_reply_t *screen_resources_r;
-    xcb_randr_output_t *randr_outputs;
-    xcb_randr_get_output_info_cookie_t output_info_c;
-    xcb_randr_get_output_info_reply_t *output_info_r;
-    xcb_randr_get_crtc_info_cookie_t crtc_info_c;
-    xcb_randr_get_crtc_info_reply_t *crtc_info_r;
+    xcb_randr_output_t *outputs;
+    xcb_randr_mode_info_t *modes;
+    int modes_len, i, j;
 
     if (!_NestedClientCheckRandRVersion(scrnIndex, conn, 1, 2))
         return FALSE;
 
     /* Get list of outputs from screen resources */
     screen_resources_c = xcb_randr_get_screen_resources(conn,
-                                                        rootWindow);
+                                                        output->rootWindow);
     screen_resources_r = xcb_randr_get_screen_resources_reply(conn,
                                                               screen_resources_c,
-                                                              NULL);
-    randr_outputs = xcb_randr_get_screen_resources_outputs(screen_resources_r);
+                                                              &error);
 
-    for (i = 0; !output_found && i < screen_resources_r->num_outputs; i++)
+    if (!screen_resources_r)
     {
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Failed to get host X server screen resources. Error code = %d.\n",
+                   error->error_code);
+        free(error);
+        return FALSE;
+    }
+
+    outputs = xcb_randr_get_screen_resources_outputs(screen_resources_r);
+    modes = xcb_randr_get_screen_resources_modes(screen_resources_r);
+    modes_len = xcb_randr_get_screen_resources_modes_length(screen_resources_r);
+
+    for (i = 0; i < screen_resources_r->num_outputs; i++)
+    {
+        char *name;
+        int name_len;
+        xcb_randr_get_output_info_cookie_t output_info_c;
+        xcb_randr_get_output_info_reply_t *output_info_r;
+
         /* Get info on the output */
         output_info_c = xcb_randr_get_output_info(conn,
-                                                  randr_outputs[i],
+                                                  outputs[i],
                                                   XCB_CURRENT_TIME);
         output_info_r = xcb_randr_get_output_info_reply(conn,
                                                         output_info_c,
-                                                        NULL);
+                                                        &error);
+
+        if (!output_info_r)
+        {
+            xf86DrvMsg(scrnIndex,
+                       X_ERROR,
+                       "Failed to get info for output %d. Error code = %d.\n",
+                       outputs[i], error->error_code);
+            free(error);
+            continue;
+        }
 
         /* Get output name */
         name_len = xcb_randr_get_output_info_name_length(output_info_r);
@@ -211,58 +233,66 @@ _NestedClientGetOutputGeometry(int scrnIndex,
         strncpy(name, (char *)xcb_randr_get_output_info_name(output_info_r), name_len);
         name[name_len] = '\0';
 
-        if (!strcmp(name, output))
+        if (!strcmp(name, output->name))
         {
-            output_found = TRUE;
+            /* Output found! */
+            output->id = outputs[i];
+            output->crtc = output_info_r->crtc;
+            output->modes = xcb_randr_get_output_info_modes(output_info_r);
 
-            /* Check if output is connected */
-            if (output_info_r->crtc == XCB_NONE)
+            if (output->crtc != XCB_NONE)
             {
-                free(name);
-                free(output_info_r);
-                free(screen_resources_r);
-                xf86DrvMsg(scrnIndex,
-                           X_ERROR,
-                           "Output %s is currently disabled (or not connected).\n", output);
-                return FALSE;
+                /* Output is enabled. Get its CRTC geometry */
+                xcb_randr_get_crtc_info_cookie_t crtc_info_c;
+                xcb_randr_get_crtc_info_reply_t *crtc_info_r;
+
+                crtc_info_c = xcb_randr_get_crtc_info(conn,
+                                                      output->crtc,
+                                                      XCB_CURRENT_TIME);
+                crtc_info_r = xcb_randr_get_crtc_info_reply(conn,
+                                                            crtc_info_c,
+                                                            &error);
+
+                if (!crtc_info_r)
+                {
+                    xf86DrvMsg(scrnIndex,
+                               X_ERROR,
+                               "Failed to get CRTC info for output %s. Error code = %d.\n",
+                               name, error->error_code);
+                    free(error);
+                }
+                else
+                {
+                    output->width = crtc_info_r->width;
+                    output->height = crtc_info_r->height;
+                    output->x = crtc_info_r->x;
+                    output->y = crtc_info_r->y;
+                    free(crtc_info_r);
+                }
+            }
+            else
+            {
+                for (j = 0; j < modes_len; j++)
+                {
+                    if (modes[j].id == output->modes[0])
+                    {
+                        output->width = modes[j].width;
+                        output->height = modes[j].height;
+                        break;
+                    }
+                }
             }
 
-            /* Get CRTC from output info */
-            crtc_info_c = xcb_randr_get_crtc_info(conn,
-                                                  output_info_r->crtc,
-                                                  XCB_CURRENT_TIME);
-            crtc_info_r = xcb_randr_get_crtc_info_reply(conn,
-                                                        crtc_info_c,
-                                                        NULL);
-
-            /* Get CRTC geometry */
-            if (x != NULL)
-                *x = crtc_info_r->x;
-
-            if (y != NULL)
-                *y = crtc_info_r->y;
-
-            if (width != NULL)
-                *width = crtc_info_r->width;
-
-            if (height != NULL)
-                *height = crtc_info_r->height;
-
-            free(crtc_info_r);
+            free(output_info_r);
+            free(screen_resources_r);
+            return TRUE;
         }
 
-        free(name);
         free(output_info_r);
     }
 
     free(screen_resources_r);
-
-    if (!output_found)
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Output %s not available in host X server.\n", output);
-
-    return output_found;
+    return FALSE;
 }
 
 static Bool
@@ -333,9 +363,38 @@ NestedClientCheckDisplay(int scrnIndex,
 
     if (output != NULL)
     {
-        if (!_NestedClientGetOutputGeometry(scrnIndex, conn, s->root,
-                                            output, width, height, x, y))
+        Output this_output;
+
+        this_output.name = output;
+        this_output.rootWindow = s->root;
+        this_output.width = 0;
+        this_output.height = 0;
+        this_output.x = 0;
+        this_output.y = 0;
+
+        if (!_NestedClientOutputInit(scrnIndex, conn, &this_output))
             return FALSE;
+
+        xf86DrvMsg(scrnIndex,
+                   X_INFO,
+                   "Got CRTC geometry from output %s: %dx%d+%d+%d\n",
+                   this_output.name,
+                   this_output.width,
+                   this_output.height,
+                   this_output.x,
+                   this_output.y);
+
+        if (width != NULL)
+            *width = this_output.width;
+
+        if (height != NULL)
+            *height = this_output.height;
+
+        if (x != NULL)
+            *x = this_output.x;
+
+        if (y != NULL)
+            *y = this_output.y;
     }
     else
     {
