@@ -103,7 +103,11 @@ typedef enum {
     OPTION_XAUTHORITY,
     OPTION_ORIGIN,
     OPTION_FULLSCREEN,
-    OPTION_OUTPUT
+    OPTION_OUTPUT,
+    OPTION_LEFT_OF,
+    OPTION_RIGHT_OF,
+    OPTION_ABOVE,
+    OPTION_BELOW
 } NestedOpts;
 
 typedef enum {
@@ -124,6 +128,10 @@ static OptionInfoRec NestedOptions[] = {
     { OPTION_ORIGIN,     "Origin",     OPTV_STRING,  {0}, FALSE },
     { OPTION_FULLSCREEN, "Fullscreen", OPTV_BOOLEAN, {0}, FALSE },
     { OPTION_OUTPUT,     "Output",     OPTV_STRING,  {0}, FALSE },
+    { OPTION_LEFT_OF,    "LeftOf",     OPTV_STRING,  {0}, FALSE },
+    { OPTION_RIGHT_OF,   "RightOf",    OPTV_STRING,  {0}, FALSE },
+    { OPTION_ABOVE,      "Above",      OPTV_STRING,  {0}, FALSE },
+    { OPTION_BELOW,      "Below",      OPTV_STRING,  {0}, FALSE },
     { -1,                NULL,         OPTV_NONE,    {0}, FALSE }
 };
 
@@ -183,13 +191,15 @@ typedef struct NestedPrivate {
     unsigned int                 fullHeight;
     Bool                         fullscreen;
     const char                  *output;
+    const char                  *parentOutput;
+    char                         relation;
     NestedClientPrivatePtr       clientData;
     CreateScreenResourcesProcPtr CreateScreenResources;
     CloseScreenProcPtr           CloseScreen;
     ShadowUpdateProc             update;
 } NestedPrivate, *NestedPrivatePtr;
 
-#define PNESTED(p)    ((NestedPrivatePtr)((p)->driverPrivate))
+#define PNESTED(p)     ((NestedPrivatePtr)((p)->driverPrivate))
 #define PCLIENTDATA(p) (PNESTED(p)->clientData)
 
 /*static ScrnInfoPtr NESTEDScrn;*/
@@ -345,6 +355,8 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     pNested->fullHeight = 0;
     pNested->fullscreen = FALSE;
     pNested->output = NULL;
+    pNested->parentOutput = NULL;
+    pNested->relation = '\0';
 
     if (!xf86SetDepthBpp(pScrn, 0, 0, 0, Support24bppFb | Support32bppFb))
         return FALSE;
@@ -403,12 +415,38 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
                    pNested->output);
     }
 
+    if (xf86IsOptionSet(NestedOptions, OPTION_LEFT_OF)) {
+        pNested->relation = 'L';
+        pNested->parentOutput = xf86GetOptValString(NestedOptions,
+                                                    OPTION_LEFT_OF);
+    }
+
+    if (xf86IsOptionSet(NestedOptions, OPTION_RIGHT_OF)) {
+        pNested->relation = 'R';
+        pNested->parentOutput = xf86GetOptValString(NestedOptions,
+                                                    OPTION_RIGHT_OF);
+    }
+
+    if (xf86IsOptionSet(NestedOptions, OPTION_ABOVE)) {
+        pNested->relation = 'A';
+        pNested->parentOutput = xf86GetOptValString(NestedOptions,
+                                                    OPTION_ABOVE);
+    }
+
+    if (xf86IsOptionSet(NestedOptions, OPTION_BELOW)) {
+        pNested->relation = 'B';
+        pNested->parentOutput = xf86GetOptValString(NestedOptions,
+                                                    OPTION_BELOW);
+    }
+
     xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
 
     if (!NestedClientCheckDisplay(pScrn->scrnIndex,
                                   pNested->displayName,
                                   pNested->xauthFile,
                                   pNested->output,
+                                  pNested->parentOutput,
+                                  pNested->relation,
                                   &pNested->fullWidth,
                                   &pNested->fullHeight,
                                   &pNested->originX,
