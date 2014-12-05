@@ -57,19 +57,14 @@
 
 #define BUF_LEN 256
 
+#define MAX(a, b) (((a) <= (b)) ? (b) : (a))
+
 extern char *display;
 
 static xcb_atom_t atom_WM_DELETE_WINDOW;
 
 typedef struct _Output {
     const char *name;
-
-    /* XXX: Storing root window id here is ugly! */
-    xcb_window_t rootWindow;
-
-    xcb_randr_output_t id;
-    xcb_randr_crtc_t crtc;
-    xcb_randr_mode_t *modes;
     int x;
     int y;
     unsigned int width;
@@ -105,6 +100,48 @@ struct NestedClientPrivate {
     uint32_t attrs[2];
     uint32_t attr_mask;
 };
+
+static Bool
+_NestedClientConnectionHasError(int scrnIndex,
+                                xcb_connection_t *conn,
+                                const char *displayName)
+{
+    switch (xcb_connection_has_error(conn))
+    {
+    case XCB_CONN_ERROR:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Failed to connect to host X server at display %s.\n", displayName);
+        return TRUE;
+    case XCB_CONN_CLOSED_EXT_NOTSUPPORTED:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Connection to host X server closed: unsupported extension.\n");
+        return TRUE;
+    case XCB_CONN_CLOSED_MEM_INSUFFICIENT:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Connection to host X server closed: out of memory.\n");
+        return TRUE;
+    case XCB_CONN_CLOSED_REQ_LEN_EXCEED:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Connection to host X server closed: exceeding request length that server accepts.\n");
+        return TRUE;
+    case XCB_CONN_CLOSED_PARSE_ERR:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Invalid display for host X server: %s\n", displayName);
+        return TRUE;
+    case XCB_CONN_CLOSED_INVALID_SCREEN:
+        xf86DrvMsg(scrnIndex,
+                   X_ERROR,
+                   "Host X server does not have a screen matching display %s.\n", displayName);
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
 
 static inline Bool
 _NestedClientCheckExtension(xcb_connection_t *connection,
@@ -169,21 +206,27 @@ _NestedClientCheckRandRVersion(int scrnIndex,
 static Bool
 _NestedClientOutputInit(int scrnIndex,
                         xcb_connection_t *conn,
-                        Output *output)
+                        int screenNumber,
+                        Output *output,
+                        Output *relativeTo,
+                        char relation)
 {
     xcb_generic_error_t *error;
+    xcb_screen_t *screen;
     xcb_randr_get_screen_resources_cookie_t screen_resources_c;
     xcb_randr_get_screen_resources_reply_t *screen_resources_r;
     xcb_randr_output_t *outputs;
-    xcb_randr_mode_info_t *modes;
-    int modes_len, i, j;
+    xcb_randr_mode_info_t *available_modes;
+    int available_modes_len, i, j;
 
     if (!_NestedClientCheckRandRVersion(scrnIndex, conn, 1, 2))
         return FALSE;
 
+    screen = xcb_aux_get_screen(conn, screenNumber);
+
     /* Get list of outputs from screen resources */
     screen_resources_c = xcb_randr_get_screen_resources(conn,
-                                                        output->rootWindow);
+                                                        screen->root);
     screen_resources_r = xcb_randr_get_screen_resources_reply(conn,
                                                               screen_resources_c,
                                                               &error);
@@ -199,8 +242,8 @@ _NestedClientOutputInit(int scrnIndex,
     }
 
     outputs = xcb_randr_get_screen_resources_outputs(screen_resources_r);
-    modes = xcb_randr_get_screen_resources_modes(screen_resources_r);
-    modes_len = xcb_randr_get_screen_resources_modes_length(screen_resources_r);
+    available_modes = xcb_randr_get_screen_resources_modes(screen_resources_r);
+    available_modes_len = xcb_randr_get_screen_resources_modes_length(screen_resources_r);
 
     for (i = 0; i < screen_resources_r->num_outputs; i++)
     {
@@ -212,7 +255,7 @@ _NestedClientOutputInit(int scrnIndex,
         /* Get info on the output */
         output_info_c = xcb_randr_get_output_info(conn,
                                                   outputs[i],
-                                                  XCB_CURRENT_TIME);
+                                                  XCB_TIME_CURRENT_TIME);
         output_info_r = xcb_randr_get_output_info_reply(conn,
                                                         output_info_c,
                                                         &error);
@@ -236,19 +279,15 @@ _NestedClientOutputInit(int scrnIndex,
         if (!strcmp(name, output->name))
         {
             /* Output found! */
-            output->id = outputs[i];
-            output->crtc = output_info_r->crtc;
-            output->modes = xcb_randr_get_output_info_modes(output_info_r);
-
-            if (output->crtc != XCB_NONE)
+            if (output_info_r->crtc != XCB_NONE)
             {
-                /* Output is enabled. Get its CRTC geometry */
+                /* Output is enabled! Get its CRTC geometry */
                 xcb_randr_get_crtc_info_cookie_t crtc_info_c;
                 xcb_randr_get_crtc_info_reply_t *crtc_info_r;
 
                 crtc_info_c = xcb_randr_get_crtc_info(conn,
-                                                      output->crtc,
-                                                      XCB_CURRENT_TIME);
+                                                      output_info_r->crtc,
+                                                      XCB_TIME_CURRENT_TIME);
                 crtc_info_r = xcb_randr_get_crtc_info_reply(conn,
                                                             crtc_info_c,
                                                             &error);
@@ -260,6 +299,9 @@ _NestedClientOutputInit(int scrnIndex,
                                "Failed to get CRTC info for output %s. Error code = %d.\n",
                                name, error->error_code);
                     free(error);
+                    free(output_info_r);
+                    free(screen_resources_r);
+                    return FALSE;
                 }
                 else
                 {
@@ -272,17 +314,120 @@ _NestedClientOutputInit(int scrnIndex,
             }
             else
             {
-                for (j = 0; j < modes_len; j++)
+                /* Output is disabled. Try to enable it. */
+                unsigned int new_screen_width, new_screen_height,
+                             new_screen_width_mm, new_screen_height_mm;
+                xcb_randr_mode_t *modes;
+                xcb_randr_crtc_t *crtcs;
+                xcb_randr_set_crtc_config_cookie_t crtc_config_c;
+                xcb_randr_set_crtc_config_reply_t *crtc_config_r;
+
+                modes = xcb_randr_get_output_info_modes(output_info_r);
+                crtcs = xcb_randr_get_output_info_crtcs(output_info_r);
+
+                for (j = 0; j < available_modes_len; j++)
                 {
-                    if (modes[j].id == output->modes[0])
+                    if (available_modes[j].id == modes[0])
                     {
-                        output->width = modes[j].width;
-                        output->height = modes[j].height;
+                        output->width = available_modes[j].width;
+                        output->height = available_modes[j].height;
                         break;
                     }
                 }
+
+                if (relativeTo != NULL)
+                {
+                    switch (relation)
+                    {
+                    case 'L':
+#if 0
+                        output->x = relativeTo->x - output->width;
+                        output->y = relativeTo->y;
+                        new_screen_width = relativeTo->width + output->width;
+                        new_screen_height = MAX(relativeTo->height, output->height);
+                        break;
+#else
+                        xf86DrvMsg(scrnIndex,
+                                   X_WARNING,
+                                   "Option \"LeftOf\" for output %s is not currently supported. Falling back to \"RightOf\".\n",
+                                   output->name);
+#endif
+                    case 'R':
+                        output->x = relativeTo->x + relativeTo->width;
+                        output->y = relativeTo->y;
+                        new_screen_width = relativeTo->width + output->width;
+                        new_screen_height = MAX(relativeTo->height, output->height);
+                        break;
+                    case 'A':
+#if 0
+                        output->x = relativeTo->x;
+                        output->y = relativeTo->y - output->height;
+                        new_screen_width = MAX(relativeTo->width, output->width);
+                        new_screen_height = relativeTo->height + output->height;
+                        break;
+#else
+                        xf86DrvMsg(scrnIndex,
+                                   X_WARNING,
+                                   "Option \"Above\" for output %s is not currently supported. Falling back to \"Below\".\n",
+                                   output->name);
+#endif
+                    case 'B':
+                        output->x = relativeTo->x;
+                        output->y = relativeTo->y + relativeTo->height;
+                        new_screen_width = MAX(relativeTo->width, output->width);
+                        new_screen_height = relativeTo->height + output->height;
+                        break;
+                    }
+
+                    new_screen_width_mm = (new_screen_width / screen->width_in_pixels) * screen->width_in_millimeters;
+                    new_screen_height_mm = (new_screen_height / screen->height_in_pixels) * screen->height_in_millimeters;
+                }
+
+                xf86DrvMsg(scrnIndex,
+                           X_INFO,
+                           "New screen size to allocate output %s: %dx%d px, %dx%d mm.\n",
+                           output->name,
+                           new_screen_width,
+                           new_screen_height,
+                           new_screen_width_mm,
+                           new_screen_height_mm);
+
+                xcb_randr_set_screen_size(conn,
+                                          screen->root,
+                                          new_screen_width,
+                                          new_screen_height,
+                                          new_screen_width_mm,
+                                          new_screen_height_mm);
+
+                crtc_config_c = xcb_randr_set_crtc_config(conn,
+                                                          crtcs[0],
+                                                          XCB_TIME_CURRENT_TIME,
+                                                          XCB_TIME_CURRENT_TIME,
+                                                          output->x,
+                                                          output->y,
+                                                          modes[0],
+                                                          XCB_RANDR_ROTATION_ROTATE_0,
+                                                          1,
+                                                          &outputs[i]);
+                crtc_config_r = xcb_randr_set_crtc_config_reply(conn, crtc_config_c, &error);
+
+                if (!crtc_config_r)
+                {
+                    xf86DrvMsg(scrnIndex,
+                               X_ERROR,
+                               "Failed to enable output %s. Error code = %d.\n",
+                               output->name, error->error_code);
+                    free(error);
+                    free(name);
+                    free(output_info_r);
+                    free(screen_resources_r);
+                    return FALSE;
+                }
+
+                free(crtc_config_r);
             }
 
+            free(name);
             free(output_info_r);
             free(screen_resources_r);
             return TRUE;
@@ -293,46 +438,6 @@ _NestedClientOutputInit(int scrnIndex,
 
     free(screen_resources_r);
     return FALSE;
-}
-
-static Bool
-_NestedClientConnectionHasError(int scrnIndex, xcb_connection_t *conn, const char *displayName)
-{
-    switch (xcb_connection_has_error(conn))
-    {
-    case XCB_CONN_ERROR:
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Failed to connect to host X server at display %s.\n", displayName);
-        return TRUE;
-    case XCB_CONN_CLOSED_EXT_NOTSUPPORTED:
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Connection to host X server closed: unsupported extension.\n");
-        return TRUE;
-    case XCB_CONN_CLOSED_MEM_INSUFFICIENT:
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Connection to host X server closed: out of memory.\n");
-        return TRUE;
-    case XCB_CONN_CLOSED_REQ_LEN_EXCEED:
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Connection to host X server closed: exceeding request length that server accepts.\n");
-        return TRUE;
-    case XCB_CONN_CLOSED_PARSE_ERR:
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Invalid display for host X server: %s\n", displayName);
-        return TRUE;
-    case XCB_CONN_CLOSED_INVALID_SCREEN:
-        xf86DrvMsg(scrnIndex,
-                   X_ERROR,
-                   "Host X server does not have a screen matching display %s.\n", displayName);
-        return TRUE;
-    default:
-        return FALSE;
-    }
 }
 
 Bool
@@ -349,7 +454,7 @@ NestedClientCheckDisplay(int scrnIndex,
 {
     int n;
     xcb_connection_t *conn;
-    xcb_screen_t *s;
+    Output thisOutput;
 
     /* Needed until we can pass authorization file
      *  directly to xcb_connect(). */
@@ -361,45 +466,61 @@ NestedClientCheckDisplay(int scrnIndex,
     if (_NestedClientConnectionHasError(scrnIndex, conn, displayName))
         return FALSE;
 
-    s = xcb_aux_get_screen(conn, n);
-
     if (output != NULL)
     {
-        Output this_output;
+        thisOutput.name = output;
+        thisOutput.width = 0;
+        thisOutput.height = 0;
+        thisOutput.x = 0;
+        thisOutput.y = 0;
 
-        this_output.name = output;
-        this_output.rootWindow = s->root;
-        this_output.width = 0;
-        this_output.height = 0;
-        this_output.x = 0;
-        this_output.y = 0;
+        if (parentOutput != NULL)
+        {
+            Output relativeTo;
 
-        if (!_NestedClientOutputInit(scrnIndex, conn, &this_output))
-            return FALSE;
+            relativeTo.name = parentOutput;
+            relativeTo.width = 0;
+            relativeTo.height = 0;
+            relativeTo.x = 0;
+            relativeTo.y = 0;
+
+            if (!_NestedClientOutputInit(scrnIndex, conn, n, &relativeTo, NULL, '\0'))
+                return FALSE;
+
+            if (!_NestedClientOutputInit(scrnIndex, conn, n, &thisOutput, &relativeTo, relation))
+                return FALSE;
+        }
+        else
+        {
+            if (!_NestedClientOutputInit(scrnIndex, conn, n, &thisOutput, NULL, '\0'))
+                return FALSE;
+        }
 
         xf86DrvMsg(scrnIndex,
                    X_INFO,
                    "Got CRTC geometry from output %s: %dx%d+%d+%d\n",
-                   this_output.name,
-                   this_output.width,
-                   this_output.height,
-                   this_output.x,
-                   this_output.y);
+                   thisOutput.name,
+                   thisOutput.width,
+                   thisOutput.height,
+                   thisOutput.x,
+                   thisOutput.y);
 
         if (width != NULL)
-            *width = this_output.width;
+            *width = thisOutput.width;
 
         if (height != NULL)
-            *height = this_output.height;
+            *height = thisOutput.height;
 
         if (x != NULL)
-            *x = this_output.x;
+            *x = thisOutput.x;
 
         if (y != NULL)
-            *y = this_output.y;
+            *y = thisOutput.y;
     }
     else
     {
+        xcb_screen_t *s = xcb_aux_get_screen(conn, n);
+
         if (width != NULL)
             *width = s->width_in_pixels;
 
