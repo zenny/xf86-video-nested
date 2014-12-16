@@ -104,6 +104,7 @@ typedef enum {
     OPTION_ORIGIN,
     OPTION_FULLSCREEN,
     OPTION_OUTPUT,
+    OPTION_ENABLE,
     OPTION_LEFT_OF,
     OPTION_RIGHT_OF,
     OPTION_ABOVE,
@@ -128,6 +129,7 @@ static OptionInfoRec NestedOptions[] = {
     { OPTION_ORIGIN,     "Origin",     OPTV_STRING,  {0}, FALSE },
     { OPTION_FULLSCREEN, "Fullscreen", OPTV_BOOLEAN, {0}, FALSE },
     { OPTION_OUTPUT,     "Output",     OPTV_STRING,  {0}, FALSE },
+    { OPTION_ENABLE,     "Enable",     OPTV_BOOLEAN, {0}, FALSE },
     { OPTION_LEFT_OF,    "LeftOf",     OPTV_STRING,  {0}, FALSE },
     { OPTION_RIGHT_OF,   "RightOf",    OPTV_STRING,  {0}, FALSE },
     { OPTION_ABOVE,      "Above",      OPTV_STRING,  {0}, FALSE },
@@ -191,6 +193,7 @@ typedef struct NestedPrivate {
     unsigned int                 fullHeight;
     Bool                         fullscreen;
     const char                  *output;
+    Bool                         enableOutput;
     const char                  *parentOutput;
     char                         relation;
     NestedClientPrivatePtr       clientData;
@@ -415,6 +418,10 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
                    pNested->output);
     }
 
+    if (xf86GetOptValBool(NestedOptions, OPTION_ENABLE, &pNested->enableOutput))
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Output will be\n",
+                   pNested->enableOutput ? "enabled" : "disabled");
+
     if (xf86IsOptionSet(NestedOptions, OPTION_LEFT_OF)) {
         pNested->relation = 'L';
         pNested->parentOutput = xf86GetOptValString(NestedOptions,
@@ -445,6 +452,7 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
                                   pNested->displayName,
                                   pNested->xauthFile,
                                   pNested->output,
+                                  pNested->enableOutput,
                                   pNested->parentOutput,
                                   pNested->relation,
                                   &pNested->fullWidth,
