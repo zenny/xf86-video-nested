@@ -208,6 +208,7 @@ _NestedClientOutputInit(int scrnIndex,
                         xcb_connection_t *conn,
                         int screenNumber,
                         Output *output,
+                        Bool enable,
                         Output *relativeTo,
                         char relation)
 {
@@ -312,7 +313,7 @@ _NestedClientOutputInit(int scrnIndex,
                     free(crtc_info_r);
                 }
             }
-            else
+            else if (enable)
             {
                 /* Output is disabled. Try to enable it. */
                 unsigned int new_screen_width, new_screen_height,
@@ -426,6 +427,18 @@ _NestedClientOutputInit(int scrnIndex,
 
                 free(crtc_config_r);
             }
+            else
+            {
+                xf86DrvMsg(scrnIndex,
+                           X_ERROR,
+                           "Output %s is currently disabled or disconnected.\n",
+                           output->name);
+                free(error);
+                free(name);
+                free(output_info_r);
+                free(screen_resources_r);
+                return FALSE;
+            }
 
             free(name);
             free(output_info_r);
@@ -485,15 +498,15 @@ NestedClientCheckDisplay(int scrnIndex,
             relativeTo.x = 0;
             relativeTo.y = 0;
 
-            if (!_NestedClientOutputInit(scrnIndex, conn, n, &relativeTo, NULL, '\0'))
+            if (!_NestedClientOutputInit(scrnIndex, conn, n, &relativeTo, FALSE, NULL, '\0'))
                 return FALSE;
 
-            if (!_NestedClientOutputInit(scrnIndex, conn, n, &thisOutput, &relativeTo, relation))
+            if (!_NestedClientOutputInit(scrnIndex, conn, n, &thisOutput, enable, &relativeTo, relation))
                 return FALSE;
         }
         else
         {
-            if (!_NestedClientOutputInit(scrnIndex, conn, n, &thisOutput, NULL, '\0'))
+            if (!_NestedClientOutputInit(scrnIndex, conn, n, &thisOutput, enable, NULL, '\0'))
                 return FALSE;
         }
 
