@@ -419,7 +419,7 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     }
 
     if (xf86GetOptValBool(NestedOptions, OPTION_ENABLE, &pNested->enableOutput))
-        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Output will be\n",
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Output will be %s\n",
                    pNested->enableOutput ? "enabled" : "disabled");
 
     if (xf86IsOptionSet(NestedOptions, OPTION_LEFT_OF)) {
