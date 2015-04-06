@@ -73,8 +73,6 @@ typedef struct _Output {
 
 struct NestedClientPrivate {
     /* Host X server data */
-    const char *displayName;
-    const char *xauthFile;
     int screenNumber;
     xcb_connection_t *conn;
     xcb_visualtype_t *visual;
@@ -103,9 +101,10 @@ struct NestedClientPrivate {
 
 static Bool
 _NestedClientConnectionHasError(int scrnIndex,
-                                xcb_connection_t *conn,
-                                const char *displayName)
+                                xcb_connection_t *conn)
 {
+    const char *displayName = getenv("DISPLAY");
+
     switch (xcb_connection_has_error(conn))
     {
     case XCB_CONN_ERROR:
@@ -455,8 +454,6 @@ _NestedClientOutputInit(int scrnIndex,
 
 Bool
 NestedClientCheckDisplay(int scrnIndex,
-                         const char *displayName,
-                         const char *xauthFile,
                          const char *output,
                          Bool enable,
                          const char *parentOutput,
@@ -470,14 +467,9 @@ NestedClientCheckDisplay(int scrnIndex,
     xcb_connection_t *conn;
     Output thisOutput;
 
-    /* Needed until we can pass authorization file
-     *  directly to xcb_connect(). */
-    if (xauthFile)
-        setenv("XAUTHORITY", xauthFile, 1);
+    conn = xcb_connect(NULL, &n);
 
-    conn = xcb_connect(displayName, &n);
-
-    if (_NestedClientConnectionHasError(scrnIndex, conn, displayName))
+    if (_NestedClientConnectionHasError(scrnIndex, conn))
         return FALSE;
 
     if (output != NULL)
@@ -797,13 +789,9 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
         XCB_EVENT_MASK_EXPOSURE;
     pPriv->attr_mask = XCB_CW_EVENT_MASK;
 
-    /* Needed until we can pass xauthFile directly to xcb_connect(). */
-    if (pPriv->xauthFile)
-        setenv("XAUTHORITY", pPriv->xauthFile, 1);
+    pPriv->conn = xcb_connect(NULL, &pPriv->screenNumber);
 
-    pPriv->conn = xcb_connect(pPriv->displayName, &pPriv->screenNumber);
-
-    if (_NestedClientConnectionHasError(pPriv->scrnIndex, pPriv->conn, pPriv->displayName))
+    if (_NestedClientConnectionHasError(pPriv->scrnIndex, pPriv->conn))
         return FALSE;
 
     screen = xcb_aux_get_screen(pPriv->conn, pPriv->screenNumber);
@@ -968,8 +956,6 @@ _NestedClientCreateWindow(NestedClientPrivatePtr pPriv)
 
 NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
-                         const char *displayName,
-                         const char *xauthFile,
                          Bool wantFullscreenHint,
                          unsigned int width,
                          unsigned int height,
@@ -986,8 +972,6 @@ NestedClientCreateScreen(int scrnIndex,
     if (!pPriv)
         return NULL;
 
-    pPriv->displayName = displayName;
-    pPriv->xauthFile = xauthFile;
     pPriv->scrnIndex = scrnIndex;
     pPriv->usingFullscreen = wantFullscreenHint;
     pPriv->width = width;
@@ -1172,8 +1156,7 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
         if (!ev)
         {
             if (_NestedClientConnectionHasError(pPriv->scrnIndex,
-                                                pPriv->conn,
-                                                pPriv->displayName))
+                                                pPriv->conn))
             {
                 /* XXX: Is there a better way to do this? */
                 xf86DrvMsg(pPriv->scrnIndex,

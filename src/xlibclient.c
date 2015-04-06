@@ -86,8 +86,6 @@ struct NestedClientPrivate {
 /* Checks if a display is open */
 Bool
 NestedClientCheckDisplay(int scrnIndex,
-                         const char *displayName,
-                         const char *xauthFile,
                          const char *output,
                          Bool enable,
                          const char *parentOutput,
@@ -98,12 +96,7 @@ NestedClientCheckDisplay(int scrnIndex,
                          int *y) {
     Display *d;
 
-    /* Needed until we can pass authorization file
-     * directly to XOpenDisplay() */
-    if (xauthFile != NULL)
-        setenv("XAUTHORITY", xauthFile, 1);
-
-    d = XOpenDisplay(displayName);
+    d = XOpenDisplay(NULL);
     if (!d) {
         return FALSE;
     } else {
@@ -181,8 +174,6 @@ NestedClientTryXShm(NestedClientPrivatePtr pPriv, int scrnIndex, int width, int 
 
 NestedClientPrivatePtr
 NestedClientCreateScreen(int scrnIndex,
-                         const char *displayName,
-                         const char *xauthFile,
                          Bool wantFullscreenHint,
                          unsigned int width,
                          unsigned int height,
@@ -206,7 +197,7 @@ NestedClientCreateScreen(int scrnIndex,
     if (xauthFile != NULL)
         setenv("XAUTHORITY", xauthFile, 1);
 
-    pPriv->display = XOpenDisplay(displayName);
+    pPriv->display = XOpenDisplay(NULL);
     if (!pPriv->display)
         return NULL;
 

@@ -185,8 +185,6 @@ _X_EXPORT XF86ModuleData nestedModuleData = {
 
 /* These stuff should be valid to all server generations */
 typedef struct NestedPrivate {
-    const char                  *displayName;
-    const char                  *xauthFile;
     int                          originX;
     int                          originY;
     unsigned int                 fullWidth;
@@ -337,6 +335,7 @@ static void NestedFreePrivate(ScrnInfoPtr pScrn) {
 /* Data from here is valid to all server generations */
 static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     NestedPrivatePtr pNested;
+    const char *displayName = getenv("DISPLAY");
     const char *originString = NULL;
 
     xf86DrvMsg(pScrn->scrnIndex, X_INFO, "NestedPreInit\n");
@@ -350,8 +349,6 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     }
 
     pNested = PNESTED(pScrn);
-    pNested->displayName = NULL;
-    pNested->xauthFile = NULL;
     pNested->originX = 0;
     pNested->originY = 0;
     pNested->fullWidth = 0;
@@ -382,17 +379,17 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     xf86ProcessOptions(pScrn->scrnIndex, pScrn->options, NestedOptions);
 
     if (xf86IsOptionSet(NestedOptions, OPTION_DISPLAY)) {
-        pNested->displayName = xf86GetOptValString(NestedOptions,
-                                                   OPTION_DISPLAY);
+        displayName = xf86GetOptValString(NestedOptions,
+                                          OPTION_DISPLAY);
         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Using display \"%s\"\n",
-                   pNested->displayName);
+                   displayName);
+        setenv("DISPLAY", displayName, 1);
     }
 
     if (xf86IsOptionSet(NestedOptions, OPTION_XAUTHORITY)) {
-        pNested->xauthFile = xf86GetOptValString(NestedOptions,
-                                                 OPTION_XAUTHORITY);
-        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Using authorization file \"%s\"\n",
-                   pNested->xauthFile);
+        setenv("XAUTHORITY",
+               xf86GetOptValString(NestedOptions,
+                                   OPTION_XAUTHORITY), 1);
     }
 
     if (xf86IsOptionSet(NestedOptions, OPTION_ORIGIN)) {
@@ -449,8 +446,6 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
     xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
 
     if (!NestedClientCheckDisplay(pScrn->scrnIndex,
-                                  pNested->displayName,
-                                  pNested->xauthFile,
                                   pNested->output,
                                   pNested->enableOutput,
                                   pNested->parentOutput,
@@ -459,8 +454,7 @@ static Bool NestedPreInit(ScrnInfoPtr pScrn, int flags) {
                                   &pNested->fullHeight,
                                   &pNested->originX,
                                   &pNested->originY)) {
-        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "Can't open display: %s\n",
-                   pNested->displayName ? pNested->displayName : getenv("DISPLAY"));
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "Can't open display: %s\n", displayName);
         return FALSE;
     }
 
@@ -665,8 +659,6 @@ static Bool NestedScreenInit(SCREEN_INIT_ARGS_DECL)
     //Load_Nested_Mouse();
 
     pNested->clientData = NestedClientCreateScreen(pScrn->scrnIndex,
-                                                   pNested->displayName,
-                                                   pNested->xauthFile,
                                                    pNested->output != NULL || pNested->fullscreen,
                                                    pScrn->virtualX,
                                                    pScrn->virtualY,
