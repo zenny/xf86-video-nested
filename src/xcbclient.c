@@ -1223,79 +1223,100 @@ Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv,
                                      CARD8 *modmap,
                                      XkbControlsPtr ctrls)
 {
-    /* XXX: REVIEW THIS CODE AFTER XCB-XKB BECOMES STABLE */
     int mapWidth;
     int min_keycode, max_keycode;
     int i, j;
     int keymap_len;
-    xcb_generic_error_t *e;
     xcb_keysym_t *keymap;
     xcb_keycode_t *modifiermap;
     xcb_get_keyboard_mapping_cookie_t mapping_c;
     xcb_get_keyboard_mapping_reply_t *mapping_r;
     xcb_get_modifier_mapping_cookie_t modifier_c;
     xcb_get_modifier_mapping_reply_t *modifier_r;
+    xcb_xkb_use_extension_cookie_t use_c;
+    xcb_xkb_use_extension_reply_t *use_r;
     xcb_xkb_get_controls_cookie_t controls_c;
     xcb_xkb_get_controls_reply_t *controls_r;
-
-    min_keycode = xcb_get_setup(pPriv->conn)->min_keycode;
-    max_keycode = xcb_get_setup(pPriv->conn)->max_keycode;
-
-    mapping_c = xcb_get_keyboard_mapping(pPriv->conn,
-                                         min_keycode,
-                                         max_keycode - min_keycode + 1);
-    mapping_r = xcb_get_keyboard_mapping_reply(pPriv->conn,
-                                               mapping_c,
-                                               NULL);
-    mapWidth = mapping_r->keysyms_per_keycode;
-    keymap = xcb_get_keyboard_mapping_keysyms(mapping_r);
-    keymap_len = xcb_get_keyboard_mapping_keysyms_length(mapping_r);
-
-    modifier_c = xcb_get_modifier_mapping(pPriv->conn);
-    modifier_r = xcb_get_modifier_mapping_reply(pPriv->conn,
-                                                modifier_c,
-                                                NULL);
-    modifiermap = xcb_get_modifier_mapping_keycodes(modifier_r);
-    memset(modmap, 0, sizeof(CARD8) * MAP_LENGTH);
-
-    for (j = 0; j < 8; j++)
-        for (i = 0; i < modifier_r->keycodes_per_modifier; i++) {
-            CARD8 keycode;
-
-            if ((keycode = modifiermap[j * modifier_r->keycodes_per_modifier + i]))
-                modmap[keycode] |= 1 << j;
-    }
-
-    free(modifier_r);
-
-    keySyms->minKeyCode = min_keycode;
-    keySyms->maxKeyCode = max_keycode;
-    keySyms->mapWidth = mapWidth;
-    keySyms->map = calloc(keymap_len, sizeof(KeySym));
-
-    for (i = 0; i < keymap_len; i++)
-        keySyms->map[i] = keymap[i];
-
-    free(mapping_r);
-
-    controls_c = xcb_xkb_get_controls(pPriv->conn,
-                                      XCB_XKB_ID_USE_CORE_KBD);
-    controls_r = xcb_xkb_get_controls_reply(pPriv->conn,
-                                            controls_c,
-                                            &e);
-
-    if (e)
-    {
-        free(e);
+    
+    use_c = xcb_xkb_use_extension(pPriv->conn,
+                                  XCB_XKB_MAJOR_VERSION,
+                                  XCB_XKB_MINOR_VERSION);
+    use_r = xcb_xkb_use_extension_reply(pPriv->conn, use_c, NULL);
+    
+    if (!use_r) {
+        xf86DrvMsg(pPriv->scrnIndex,
+                   X_ERROR,
+                   "Couldn't use XKB extension.\n");
         return FALSE;
+    } else if (!use_r->supported) {
+        xf86DrvMsg(pPriv->scrnIndex,
+                   X_ERROR,
+                   "XKB extension is not supported in X server.\n");
+        free(use_r);
+        return FALSE;
+    } else {
+        free(use_r);
+        
+        controls_c = xcb_xkb_get_controls(pPriv->conn,
+                                          XCB_XKB_ID_USE_CORE_KBD);
+        controls_r = xcb_xkb_get_controls_reply(pPriv->conn,
+                                                controls_c,
+                                                NULL);
+
+        if (!controls_r) {
+            xf86DrvMsg(pPriv->scrnIndex,
+                       X_ERROR,
+                       "Couldn't get XKB keyboard controls.");
+            return FALSE;
+        }
+
+        min_keycode = xcb_get_setup(pPriv->conn)->min_keycode;
+        max_keycode = xcb_get_setup(pPriv->conn)->max_keycode;
+
+        mapping_c = xcb_get_keyboard_mapping(pPriv->conn,
+                                             min_keycode,
+                                             max_keycode - min_keycode + 1);
+        mapping_r = xcb_get_keyboard_mapping_reply(pPriv->conn,
+                                                   mapping_c,
+                                                   NULL);
+        mapWidth = mapping_r->keysyms_per_keycode;
+        keymap = xcb_get_keyboard_mapping_keysyms(mapping_r);
+        keymap_len = xcb_get_keyboard_mapping_keysyms_length(mapping_r);
+
+        modifier_c = xcb_get_modifier_mapping(pPriv->conn);
+        modifier_r = xcb_get_modifier_mapping_reply(pPriv->conn,
+                                                    modifier_c,
+                                                    NULL);
+        modifiermap = xcb_get_modifier_mapping_keycodes(modifier_r);
+        memset(modmap, 0, sizeof(CARD8) * MAP_LENGTH);
+
+        for (j = 0; j < 8; j++)
+            for (i = 0; i < modifier_r->keycodes_per_modifier; i++) {
+                CARD8 keycode;
+
+                if ((keycode = modifiermap[j * modifier_r->keycodes_per_modifier + i]))
+                    modmap[keycode] |= 1 << j;
+        }
+
+        free(modifier_r);
+
+        keySyms->minKeyCode = min_keycode;
+        keySyms->maxKeyCode = max_keycode;
+        keySyms->mapWidth = mapWidth;
+        keySyms->map = calloc(keymap_len, sizeof(KeySym));
+
+        for (i = 0; i < keymap_len; i++)
+            keySyms->map[i] = keymap[i];
+
+        free(mapping_r);
+
+        ctrls->enabled_ctrls = controls_r->enabledControls;
+
+        for (i = 0; i < XkbPerKeyBitArraySize; i++)
+            ctrls->per_key_repeat[i] = controls_r->perKeyRepeat[i];
+
+        free(controls_r);
     }
-
-    ctrls->enabled_ctrls = controls_r->enabledControls;
-
-    for (i = 0; i < XkbPerKeyBitArraySize; i++)
-        ctrls->per_key_repeat[i] = controls_r->perKeyRepeat[i];
-
-    free(controls_r);
 
     return TRUE;
 }
