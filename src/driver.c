@@ -94,6 +94,8 @@ Bool NestedAddMode(ScrnInfoPtr pScrn, int width, int height);
 void NestedPrintPscreen(ScrnInfoPtr p);
 void NestedPrintMode(ScrnInfoPtr p, DisplayModePtr m);
 
+Bool enableNestedInput;
+
 typedef enum {
     OPTION_DISPLAY,
     OPTION_XAUTHORITY,
@@ -202,12 +204,16 @@ typedef struct NestedPrivate {
 static pointer
 NestedSetup(pointer module, pointer opts, int *errmaj, int *errmin) {
     static Bool setupDone = FALSE;
+    
+    enableNestedInput = !SeatId;
 
     if (!setupDone) {
         setupDone = TRUE;
         
         xf86AddDriver(&NESTED, module, HaveDriverFuncs);
-        xf86AddInputDriver(&NESTEDINPUT, module, 0);
+        
+        if (enableNestedInput)
+            xf86AddInputDriver(&NESTEDINPUT, module, 0);
         
         return (pointer)1;
     } else {
@@ -664,7 +670,8 @@ static Bool NestedScreenInit(SCREEN_INIT_ARGS_DECL)
     
     // Schedule the NestedInputLoadDriver function to load once the
     // input core is initialized.
-    TimerSet(NULL, 0, 1, NestedMouseTimer, pNested->clientData);
+    if (enableNestedInput)
+        TimerSet(NULL, 0, 1, NestedMouseTimer, pNested->clientData);
 
     miClearVisualTypes();
     if (!miSetVisualTypesAndMasks(pScrn->depth,

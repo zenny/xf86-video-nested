@@ -53,6 +53,7 @@
 
 #define MAX(a, b) (((a) <= (b)) ? (b) : (a))
 
+extern Bool enableNestedInput;
 extern char *display;
 
 static xcb_atom_t atom_WM_DELETE_WINDOW;
@@ -772,12 +773,15 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
     uint32_t pixel;
     xcb_screen_t *screen;
 
-    pPriv->attrs[0] = XCB_EVENT_MASK_BUTTON_PRESS   |
-                      XCB_EVENT_MASK_BUTTON_RELEASE |
-                      XCB_EVENT_MASK_POINTER_MOTION |
-                      XCB_EVENT_MASK_KEY_PRESS      |
-                      XCB_EVENT_MASK_KEY_RELEASE    |
-                      XCB_EVENT_MASK_EXPOSURE;
+    pPriv->attrs[0] = XCB_EVENT_MASK_EXPOSURE;
+    
+    if (enableNestedInput)
+        pPriv->attrs[0] |= XCB_EVENT_MASK_BUTTON_PRESS   |
+                           XCB_EVENT_MASK_BUTTON_RELEASE |
+                           XCB_EVENT_MASK_POINTER_MOTION |
+                           XCB_EVENT_MASK_KEY_PRESS      |
+                           XCB_EVENT_MASK_KEY_RELEASE;
+
     pPriv->attr_mask = XCB_CW_EVENT_MASK;
 
     pPriv->conn = xcb_connect(NULL, &pPriv->screenNumber);
