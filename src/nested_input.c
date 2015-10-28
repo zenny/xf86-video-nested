@@ -192,7 +192,7 @@ _nested_input_init_buttons(DeviceIntPtr device) {
     CARD8       *map;
     Atom         buttonLabels[NUM_MOUSE_BUTTONS] = {0};
 
-    map = calloc(NUM_MOUSE_BUTTONS, sizeof(CARD8));
+    map = calloc(NUM_MOUSE_BUTTONS + 1, sizeof(CARD8));
 
     int i;
     for (i = 0; i < NUM_MOUSE_BUTTONS; i++)
