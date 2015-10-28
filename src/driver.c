@@ -510,7 +510,7 @@ NestedValidateModes(ScrnInfoPtr pScrn) {
         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Too bad for it...\n");
 
         /* If user requested modes, add them. If not, use 640x480 */
-        if (pScrn->display->modes != NULL) {
+        if (pScrn->display->modes != NULL && pScrn->display->modes[0] != NULL) {
             xf86DrvMsg(pScrn->scrnIndex, X_INFO, "User wants these modes:\n");
             for(i = 0; pScrn->display->modes[i] != NULL; i++) {
                 xf86DrvMsg(pScrn->scrnIndex, X_INFO, "  %s\n",
@@ -535,7 +535,6 @@ NestedValidateModes(ScrnInfoPtr pScrn) {
     pScrn->modePool = NULL;
 
     /* Now set virtualX, virtualY, displayWidth and virtualFrom */
-
     if (pScrn->display->virtualX >= pScrn->modes->HDisplay &&
         pScrn->display->virtualY >= pScrn->modes->VDisplay) {
         pScrn->virtualX = pScrn->display->virtualX;
