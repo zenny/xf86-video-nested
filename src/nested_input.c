@@ -27,6 +27,7 @@
  * Colin Hill <colin.james.hill@gmail.com>
  * Weseung Hwang <weseung@gmail.com>
  * Nathaniel Way <nathanielcw@hotmail.com>
+ * Laércio de Sousa <laerciosousa@sme-mogidascruzes.sp.gov.br>
  */
 
 #include <errno.h>
@@ -188,6 +189,7 @@ _nested_input_init_keyboard(DeviceIntPtr device) {
 }
 static int
 _nested_input_init_buttons(DeviceIntPtr device) {
+    int ret = Success;
     InputInfoPtr pInfo = device->public.devicePrivate;
     CARD8       *map;
     Atom         buttonLabels[NUM_MOUSE_BUTTONS] = {0};
@@ -200,12 +202,11 @@ _nested_input_init_buttons(DeviceIntPtr device) {
 
     if (!InitButtonClassDeviceStruct(device, NUM_MOUSE_BUTTONS, buttonLabels, map)) {
         xf86Msg(X_ERROR, "%s: Failed to register buttons.\n", pInfo->name);
-        
-        free(map);
-        return BadAlloc;
+        ret = BadAlloc;
     }
 
-    return Success;
+    free(map);
+    return ret;
 }
 
 static int
@@ -343,8 +344,8 @@ NestedInputLoadDriver(NestedClientPrivatePtr clientData) {
 
     // Create input options for our invocation to NewInputDeviceRequest.   
     InputOption* options = NULL;
-    options = input_option_new(options, strdup("identifier"), strdup("nestedinput"));
-    options = input_option_new(options, strdup("driver"), strdup("nestedinput"));
+    options = input_option_new(options, "identifier", "nestedinput");
+    options = input_option_new(options, "driver", "nestedinput");
     
     // Invoke NewInputDeviceRequest to call the PreInit function of
     // the driver.
