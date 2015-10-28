@@ -247,6 +247,7 @@ static int
 NestedInputControl(DeviceIntPtr device, int what) {
     int err;
     InputInfoPtr pInfo = device->public.devicePrivate;
+    OsTimerPtr timer;
 
     switch (what) {
         case DEVICE_INIT:
@@ -270,7 +271,8 @@ NestedInputControl(DeviceIntPtr device, int what) {
                 break;
 
             device->public.on = TRUE;
-            TimerSet(NULL, 0, 1, nested_input_on, device);
+            timer = TimerSet(NULL, 0, 1, nested_input_on, device);
+            free(timer);
             break;
         case DEVICE_OFF:
             xf86Msg(X_INFO, "%s: Off.\n", pInfo->name);
@@ -299,8 +301,10 @@ nested_input_ready(OsTimerPtr timer, CARD32 time, pointer arg) {
 
 static void 
 NestedInputReadInput(InputInfoPtr pInfo) {
+    OsTimerPtr timer;
     NestedInputDevicePtr pNestedInput = pInfo->private;
-    TimerSet(NULL, 0, 1, nested_input_ready, pNestedInput->clientData);
+    timer = TimerSet(NULL, 0, 1, nested_input_ready, pNestedInput->clientData);
+    free(timer);
 }
 
 void
