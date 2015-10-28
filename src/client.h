@@ -81,6 +81,4 @@ void NestedClientSetDevicePtr(NestedClientPrivatePtr pPriv, DeviceIntPtr dev);
 
 int NestedClientGetFileDescriptor(NestedClientPrivatePtr pPriv);
 
-#ifdef NESTED_INPUT
 Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv, KeySymsPtr keySyms, CARD8 *modmap, XkbControlsPtr ctrls);
-#endif

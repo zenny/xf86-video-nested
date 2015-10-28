@@ -61,18 +61,6 @@ AC_ARG_WITH([backend],
             [BACKEND=xcb])
 AC_SUBST([BACKEND])
 
-# Define a configure option to enable/disable nested input driver build
-AC_ARG_ENABLE([nested-input],
-              AS_HELP_STRING([--enable-nested-input],
-                             [Enable building nested input driver]),
-              [NESTED_INPUT="$enableval"],
-              [NESTED_INPUT=no])
-AC_SUBST([NESTED_INPUT])
-AM_CONDITIONAL([NESTED_INPUT], [test "x$NESTED_INPUT" = xyes])
-if test "x$NESTED_INPUT" = xyes; then
-    AC_DEFINE([NESTED_INPUT], [1], [Define if nested input driver is enabled])
-fi
-
 # Store the list of server defined optional extensions in REQUIRED_MODULES
 #XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
 
@@ -86,11 +74,7 @@ case "$BACKEND" in
         PKG_CHECK_MODULES(XEXT, xext)
     ;;
     xcb)
-        if test "x$NESTED_INPUT" = xyes; then
-            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-randr xcb-xkb)
-        else
-            PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-randr)
-        fi
+        PKG_CHECK_MODULES(XCB, xcb xcb-aux xcb-icccm xcb-image xcb-shm xcb-randr xcb-xkb)
     ;;
 esac
 
@@ -107,5 +91,4 @@ AC_MSG_RESULT([
 
 	moduledir:		${moduledir}
 	backend:		${BACKEND}
-	nested input:		${NESTED_INPUT}
 ])

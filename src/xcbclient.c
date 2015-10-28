@@ -32,9 +32,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-#ifdef NESTED_INPUT
 #include <X11/XKBlib.h>
-#endif
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
@@ -42,18 +40,14 @@
 #include <xcb/xcb_image.h>
 #include <xcb/shm.h>
 #include <xcb/randr.h>
-#ifdef NESTED_INPUT
 #include <xcb/xkb.h>
-#endif
 
 #include <xorg-server.h>
 #include <xf86.h>
 
 #include "client.h"
 
-#ifdef NESTED_INPUT
 #include "nested_input.h"
-#endif
 
 #define BUF_LEN 256
 
@@ -778,15 +772,12 @@ _NestedClientHostXInit(NestedClientPrivatePtr pPriv)
     uint32_t pixel;
     xcb_screen_t *screen;
 
-    pPriv->attrs[0] =
-#ifdef NESTED_INPUT
-        XCB_EVENT_MASK_BUTTON_PRESS   |
-        XCB_EVENT_MASK_BUTTON_RELEASE |
-        XCB_EVENT_MASK_POINTER_MOTION |
-        XCB_EVENT_MASK_KEY_PRESS      |
-        XCB_EVENT_MASK_KEY_RELEASE    |
-#endif
-        XCB_EVENT_MASK_EXPOSURE;
+    pPriv->attrs[0] = XCB_EVENT_MASK_BUTTON_PRESS   |
+                      XCB_EVENT_MASK_BUTTON_RELEASE |
+                      XCB_EVENT_MASK_POINTER_MOTION |
+                      XCB_EVENT_MASK_KEY_PRESS      |
+                      XCB_EVENT_MASK_KEY_RELEASE    |
+                      XCB_EVENT_MASK_EXPOSURE;
     pPriv->attr_mask = XCB_CW_EVENT_MASK;
 
     pPriv->conn = xcb_connect(NULL, &pPriv->screenNumber);
@@ -1070,7 +1061,6 @@ _NestedClientProcessClientMessage(NestedClientPrivatePtr pPriv,
     }
 }
 
-#ifdef NESTED_INPUT
 static inline Bool
 _NestedClientEventCheckInputDevice(NestedClientPrivatePtr pPriv)
 {
@@ -1142,7 +1132,6 @@ _NestedClientProcessButtonRelease(NestedClientPrivatePtr pPriv,
         NestedInputPostButtonEvent(pPriv->dev, bev->detail, FALSE);
     }
 }
-#endif
 
 void
 NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
@@ -1178,7 +1167,6 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
         case XCB_CLIENT_MESSAGE:
             _NestedClientProcessClientMessage(pPriv, ev);
             break;
-#ifdef NESTED_INPUT
         case XCB_MOTION_NOTIFY:
             _NestedClientProcessMotionNotify(pPriv, ev);
             break;
@@ -1194,7 +1182,6 @@ NestedClientCheckEvents(NestedClientPrivatePtr pPriv)
         case XCB_BUTTON_RELEASE:
             _NestedClientProcessButtonRelease(pPriv, ev);
             break;
-#endif
         }
 
         free(ev);
@@ -1227,7 +1214,6 @@ NestedClientGetFileDescriptor(NestedClientPrivatePtr pPriv)
     return xcb_get_file_descriptor(pPriv->conn);
 }
 
-#ifdef NESTED_INPUT
 Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv,
                                      KeySymsPtr keySyms,
                                      CARD8 *modmap,
@@ -1309,4 +1295,3 @@ Bool NestedClientGetKeyboardMappings(NestedClientPrivatePtr pPriv,
 
     return TRUE;
 }
-#endif
