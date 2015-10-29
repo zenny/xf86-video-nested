@@ -1060,7 +1060,6 @@ _NestedClientProcessClientMessage(NestedClientPrivatePtr pPriv,
                    X_INFO,
                    "Nested client window closed.\n");
         free(ev);
-        NestedClientCloseScreen(pPriv);
         exit(0);
     }
 }
