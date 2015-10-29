@@ -102,6 +102,8 @@ _X_EXPORT XF86ModuleData nestedInputModuleData = {
     &NestedInputUnplug
 };
 
+static OsTimerPtr input_on_timer, read_input_timer;
+
 int
 NestedInputPreInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags) {
     NestedInputDevicePtr pNestedInput;
@@ -122,6 +124,7 @@ NestedInputPreInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags) {
 
 void
 NestedInputUnInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags) {
+    free(read_input_timer);
 }
 
 static pointer
@@ -247,7 +250,6 @@ static int
 NestedInputControl(DeviceIntPtr device, int what) {
     int err;
     InputInfoPtr pInfo = device->public.devicePrivate;
-    OsTimerPtr timer;
 
     switch (what) {
         case DEVICE_INIT:
@@ -271,8 +273,7 @@ NestedInputControl(DeviceIntPtr device, int what) {
                 break;
 
             device->public.on = TRUE;
-            timer = TimerSet(NULL, 0, 1, nested_input_on, device);
-            free(timer);
+            input_on_timer = TimerSet(NULL, 0, 1, nested_input_on, device);
             break;
         case DEVICE_OFF:
             xf86Msg(X_INFO, "%s: Off.\n", pInfo->name);
@@ -284,6 +285,7 @@ NestedInputControl(DeviceIntPtr device, int what) {
             
             pInfo->fd = -1;
             device->public.on = FALSE;
+            free(input_on_timer);
             break;
         case DEVICE_CLOSE:
             break;
@@ -301,10 +303,8 @@ nested_input_ready(OsTimerPtr timer, CARD32 time, pointer arg) {
 
 static void 
 NestedInputReadInput(InputInfoPtr pInfo) {
-    OsTimerPtr timer;
     NestedInputDevicePtr pNestedInput = pInfo->private;
-    timer = TimerSet(NULL, 0, 1, nested_input_ready, pNestedInput->clientData);
-    free(timer);
+    read_input_timer = TimerSet(NULL, 0, 1, nested_input_ready, pNestedInput->clientData);
 }
 
 void

@@ -95,6 +95,7 @@ void NestedPrintPscreen(ScrnInfoPtr p);
 void NestedPrintMode(ScrnInfoPtr p, DisplayModePtr m);
 
 Bool enableNestedInput;
+static OsTimerPtr timer;
 
 typedef enum {
     OPTION_DISPLAY,
@@ -637,7 +638,6 @@ NestedWakeupHandler(pointer data, int i, pointer LastSelectMask) {
 /* Called at each server generation */
 static Bool NestedScreenInit(SCREEN_INIT_ARGS_DECL)
 {
-    OsTimerPtr timer;
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     NestedPrivatePtr pNested;
     Pixel redMask, greenMask, blueMask;
@@ -671,10 +671,8 @@ static Bool NestedScreenInit(SCREEN_INIT_ARGS_DECL)
     
     // Schedule the NestedInputLoadDriver function to load once the
     // input core is initialized.
-    if (enableNestedInput) {
+    if (enableNestedInput)
         timer = TimerSet(NULL, 0, 1, NestedMouseTimer, pNested->clientData);
-        free(timer);
-    }
 
     miClearVisualTypes();
     if (!miSetVisualTypesAndMasks(pScrn->depth,
@@ -757,6 +755,10 @@ NestedCloseScreen(CLOSE_SCREEN_ARGS_DECL) {
     NestedClientCloseScreen(PCLIENTDATA(pScrn));
 
     pScreen->CloseScreen = PNESTED(pScrn)->CloseScreen;
+    
+    if (timer != NULL)
+        free(timer);
+
     return (*pScreen->CloseScreen)(CLOSE_SCREEN_ARGS);
 }
 
