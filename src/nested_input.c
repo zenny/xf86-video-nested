@@ -338,6 +338,13 @@ NestedInputLoadDriver(NestedClientPrivatePtr clientData) {
     // Send the device to the client so that the client can send the
     // device back to the input driver when events are being posted.
     NestedClientSetDevicePtr(clientData, dev);
+
+    /* XXX: Find a better way to make Xorg recognize nestedinput
+     *      as the first core pointer. */
+    pInfo = xf86LookupInput("<default pointer>");
+    
+    if (pInfo)
+        DeleteInputDeviceRequest(pInfo->dev);
 }
     
 void
